@@ -1,0 +1,2 @@
+# ng-script
+public-script
