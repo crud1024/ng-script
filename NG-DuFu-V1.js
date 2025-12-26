@@ -18,8 +18,8 @@ const ScriptConfig = {
   ChangedLog: ["/ChangedLog/SHOWLOGCHANGED.js"],
   // Public类型脚本 - 单个
   Public: ["/PublicAll/PublicScript.js"],
-  // Components 类型脚本 - 单个入口，指向 ComPonets/ComPonets.js
-  Components: ["/ComPonets/ComPonets.js"],
+  // Components 类型脚本 - 单个入口，指向 Components/Components.js
+  Components: ["/Components/Components.js"],
   // 其他示例脚本类型
   Utils: ["/Utils/CommonUtils.js", "/Utils/Validator.js"],
   UI: ["/UI/Components.js", "/UI/Animations.js"],

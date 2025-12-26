@@ -10,43 +10,46 @@ const BASE_PATH = "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main";
 const ScriptConfig = {
   // TreeExpandPanel 组件
   TreeExpandPanel: [
-    "/ComPonets/TreeExpandPanel/V1/TreeExpandPanel.js",
-    "/ComPonets/TreeExpandPanel/V2/TreeExpandPanel.js",
-    "/ComPonets/TreeExpandPanel/V3/TreeExpandPanel.js",
+    "/Components/TreeExpandPanel/V1/TreeExpandPanel.js",
+    "/Components/TreeExpandPanel/V2/TreeExpandPanel.js",
+    "/Components/TreeExpandPanel/V3/TreeExpandPanel.js",
   ],
 
   // 其他组件类型，可以按需添加
   DataGrid: [
-    "/ComPonets/DataGrid/V1/DataGrid.js",
-    "/ComPonets/DataGrid/V2/DataGrid.js",
+    "/Components/DataGrid/V1/DataGrid.js",
+    "/Components/DataGrid/V2/DataGrid.js",
   ],
 
-  ChartPanel: ["/ComPonets/ChartPanel/V1/ChartPanel.js"],
+  ChartPanel: ["/Components/ChartPanel/V1/ChartPanel.js"],
 
   FormBuilder: [
-    "/ComPonets/FormBuilder/V1/FormBuilder.js",
-    "/ComPonets/FormBuilder/Pro/FormBuilder.js",
+    "/Components/FormBuilder/V1/FormBuilder.js",
+    "/Components/FormBuilder/Pro/FormBuilder.js",
   ],
 
-  ModalDialog: ["/ComPonets/ModalDialog/V1/ModalDialog.js"],
+  ModalDialog: ["/Components/ModalDialog/V1/ModalDialog.js"],
 
-  SidebarMenu: ["/ComPonets/SidebarMenu/V1/SidebarMenu.js"],
+  SidebarMenu: ["/Components/SidebarMenu/V1/SidebarMenu.js"],
 
   // 基础组件
-  Button: ["/ComPonets/Button/V1/Button.js", "/ComPonets/Button/V2/Button.js"],
+  Button: [
+    "/Components/Button/V1/Button.js",
+    "/Components/Button/V2/Button.js",
+  ],
 
-  Input: ["/ComPonets/Input/V1/Input.js"],
+  Input: ["/Components/Input/V1/Input.js"],
 
-  Select: ["/ComPonets/Select/V1/Select.js"],
+  Select: ["/Components/Select/V1/Select.js"],
 
   // 布局组件
-  Layout: ["/ComPonets/Layout/V1/Layout.js"],
+  Layout: ["/Components/Layout/V1/Layout.js"],
 
   // 工具组件
-  Uploader: ["/ComPonets/Uploader/V1/Uploader.js"],
+  Uploader: ["/Components/Uploader/V1/Uploader.js"],
 
   // 业务组件
-  UserProfile: ["/ComPonets/UserProfile/V1/UserProfile.js"],
+  UserProfile: ["/Components/UserProfile/V1/UserProfile.js"],
 };
 
 // 组件元数据 - 存储组件的额外信息
@@ -74,13 +77,13 @@ const ComponentMetadata = {
 
 // 组件版本映射 - 快速访问特定版本
 const ComponentVersionMap = {
-  "TreeExpandPanel:V1": "/ComPonets/TreeExpandPanel/V1/TreeExpandPanel.js",
-  "TreeExpandPanel:V2": "/ComPonets/TreeExpandPanel/V2/TreeExpandPanel.js",
-  "TreeExpandPanel:V3": "/ComPonets/TreeExpandPanel/V3/TreeExpandPanel.js",
-  "DataGrid:V1": "/ComPonets/DataGrid/V1/DataGrid.js",
-  "DataGrid:V2": "/ComPonets/DataGrid/V2/DataGrid.js",
-  "FormBuilder:V1": "/ComPonets/FormBuilder/V1/FormBuilder.js",
-  "FormBuilder:Pro": "/ComPonets/FormBuilder/Pro/FormBuilder.js",
+  "TreeExpandPanel:V1": "/Components/TreeExpandPanel/V1/TreeExpandPanel.js",
+  "TreeExpandPanel:V2": "/Components/TreeExpandPanel/V2/TreeExpandPanel.js",
+  "TreeExpandPanel:V3": "/Components/TreeExpandPanel/V3/TreeExpandPanel.js",
+  "DataGrid:V1": "/Components/DataGrid/V1/DataGrid.js",
+  "DataGrid:V2": "/Components/DataGrid/V2/DataGrid.js",
+  "FormBuilder:V1": "/Components/FormBuilder/V1/FormBuilder.js",
+  "FormBuilder:Pro": "/Components/FormBuilder/Pro/FormBuilder.js",
   // 可以继续添加其他组件的版本映射
 };
 
