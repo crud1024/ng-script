@@ -27,6 +27,15 @@ const ComponentMetadata = {
     author: "crud1024",
     lastUpdated: "2023-01-01",
   },
+  ListToLayer: {
+    displayName: "列表转树形结构",
+    description: "将平面列表数据转换为树形结构的实用工具",
+    category: "Utilities",
+    tags: ["list", "tree", "conversion", "data-structure"],
+    version: "V1",
+    author: "crud1024",
+    lastUpdated: "2023-01-01",
+  },
 };
 
 // 组件版本映射 - 快速访问特定版本
