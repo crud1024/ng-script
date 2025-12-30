@@ -3,6 +3,8 @@
  * 支持OrgOrProJectTreeEventBinder组件标签
  */
 
+const ListToLayer = require("./ListToLayer/V1/ListToLayer");
+
 // 基础路径前缀
 const BASE_PATH = "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main";
 
@@ -11,6 +13,7 @@ const ScriptConfig = {
   OrgOrProJectTreeEventBinder: [
     "/Utils/OrgOrProJectTreeEventBinder/V1/OrgOrProJectTreeEventBinder.js",
   ],
+  ListToLayer: ["/Utils/ListToLayer/V1/ListToLayer.js"],
 };
 
 // 组件元数据 - 存储组件的额外信息
@@ -30,6 +33,7 @@ const ComponentMetadata = {
 const ComponentVersionMap = {
   "OrgOrProJectTreeEventBinder:V1":
     "/Utils/OrgOrProJectTreeEventBinder/V1/OrgOrProJectTreeEventBinder.js",
+  "ListToLayer:V1": "/Utils/ListToLayer/V1/ListToLayer.js",
 };
 
 // 已加载脚本缓存
