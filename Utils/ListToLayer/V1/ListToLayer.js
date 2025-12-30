@@ -88,4 +88,3 @@ function ListToLayer(list, options = {}) {
 
   return roots;
 }
-module.exports = ListToLayer;

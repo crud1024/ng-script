@@ -37,6 +37,7 @@ const ComponentMetadata = {
     lastUpdated: "2023-01-01",
   },
 };
+addComponentType(ComponentMetadata);
 
 // 组件版本映射 - 快速访问特定版本
 const ComponentVersionMap = {
