@@ -1,0 +1,1852 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>纯JS网页布局工具 - 白蓝色系优化版</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+
+      body {
+        background-color: #f0f7ff;
+        color: #334155;
+        padding: 20px;
+        line-height: 1.6;
+      }
+
+      .container {
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      h1 {
+        color: #1e40af;
+        margin-bottom: 10px;
+        font-size: 32px;
+      }
+
+      .subtitle {
+        color: #64748b;
+        font-size: 18px;
+      }
+
+      .main-content {
+        display: flex;
+        gap: 30px;
+        flex-wrap: wrap;
+      }
+
+      .config-panel {
+        flex: 1;
+        min-width: 320px;
+        background-color: white;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+          0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        height: fit-content;
+        border: 1px solid #e2e8f0;
+      }
+
+      .layout-container {
+        flex: 2;
+        min-width: 600px;
+        background-color: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+          0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        min-height: 700px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .section-title {
+        font-size: 20px;
+        color: #2563eb;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #eff6ff;
+        font-weight: 600;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #1e40af;
+      }
+
+      input,
+      select,
+      button,
+      textarea {
+        width: 100%;
+        padding: 12px 15px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 16px;
+        transition: all 0.2s;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+
+      button {
+        background-color: #3b82f6;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background-color 0.3s;
+      }
+
+      button:hover {
+        background-color: #2563eb;
+      }
+
+      .toggle-switch {
+        display: flex;
+        align-items: center;
+        margin-top: 5px;
+      }
+
+      .toggle-switch input {
+        width: auto;
+        margin-right: 10px;
+        transform: scale(1.2);
+      }
+
+      .layout-area {
+        position: relative;
+        width: 100%;
+        height: 600px;
+        border-radius: 8px;
+        overflow: hidden;
+        background-color: #f8fafc;
+      }
+
+      #layoutCanvas {
+        width: 100%;
+        height: 100%;
+        position: relative;
+      }
+
+      .grid-info {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background-color: rgba(30, 64, 175, 0.9);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        z-index: 10;
+        font-weight: 500;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .action-buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .action-buttons button {
+        flex: 1;
+      }
+
+      .btn-secondary {
+        background-color: #94a3b8;
+      }
+
+      .btn-secondary:hover {
+        background-color: #64748b;
+      }
+
+      .btn-success {
+        background-color: #10b981;
+      }
+
+      .btn-success:hover {
+        background-color: #059669;
+      }
+
+      .btn-danger {
+        background-color: #ef4444;
+      }
+
+      .btn-danger:hover {
+        background-color: #dc2626;
+      }
+
+      .color-indicator {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        margin-right: 8px;
+        vertical-align: middle;
+        border: 1px solid #e2e8f0;
+      }
+
+      .layout-item-card {
+        background-color: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.2s;
+      }
+
+      .layout-item-card:hover {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border-color: #3b82f6;
+      }
+
+      .layout-item-info {
+        flex: 1;
+      }
+
+      .layout-item-title {
+        font-weight: 600;
+        color: #1e40af;
+        margin-bottom: 4px;
+      }
+
+      .layout-item-details {
+        font-size: 14px;
+        color: #64748b;
+      }
+
+      .layout-item-controls {
+        display: flex;
+        gap: 8px;
+      }
+
+      .layout-item-controls button {
+        width: auto;
+        padding: 8px 16px;
+        font-size: 14px;
+        border-radius: 6px;
+      }
+
+      .config-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+      }
+
+      .form-group.full-width {
+        grid-column: 1 / -1;
+      }
+
+      .form-group.small {
+        margin-bottom: 15px;
+      }
+
+      .info-box {
+        margin-top: 20px;
+        padding: 20px;
+        background-color: #eff6ff;
+        border-radius: 8px;
+        border-left: 4px solid #3b82f6;
+      }
+
+      .info-box h3 {
+        margin-bottom: 10px;
+        color: #1e40af;
+      }
+
+      .info-box ol {
+        padding-left: 20px;
+      }
+
+      .info-box li {
+        margin-bottom: 8px;
+      }
+
+      .drag-handle {
+        position: absolute;
+        background-color: #3b82f6;
+        opacity: 0;
+        transition: opacity 0.2s, background-color 0.2s;
+        z-index: 100;
+      }
+
+      .drag-handle:hover {
+        opacity: 1;
+        background-color: #2563eb;
+      }
+
+      .drag-handle.bottom {
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 6px;
+        cursor: ns-resize;
+      }
+
+      .drag-handle.right {
+        right: 0;
+        top: 0;
+        width: 6px;
+        height: 100%;
+        cursor: ew-resize;
+      }
+
+      .drag-handle.corner {
+        right: 0;
+        bottom: 0;
+        width: 12px;
+        height: 12px;
+        cursor: nwse-resize;
+        border-radius: 2px;
+      }
+
+      @media (max-width: 1100px) {
+        .main-content {
+          flex-direction: column;
+        }
+
+        .config-panel,
+        .layout-container {
+          min-width: 100%;
+        }
+      }
+
+      .config-section {
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      .config-section:last-child {
+        border-bottom: none;
+      }
+
+      .status-bar {
+        margin-top: 20px;
+        padding: 12px 16px;
+        background-color: #f1f5f9;
+        border-radius: 8px;
+        font-size: 14px;
+        color: #475569;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .status-indicator {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 8px;
+        background-color: #10b981;
+      }
+
+      .status-indicator.inactive {
+        background-color: #94a3b8;
+      }
+
+      .status-indicator.warning {
+        background-color: #f59e0b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>纯JS网页布局工具</h1>
+        <p class="subtitle">白蓝色系优化版 - 支持外边距配置和可视化调整</p>
+      </header>
+
+      <div class="main-content">
+        <!-- 配置面板 -->
+        <div class="config-panel">
+          <div class="config-section">
+            <h2 class="section-title">整体配置</h2>
+
+            <div class="config-grid">
+              <div class="form-group">
+                <label for="horizontalUnits">水平单元数</label>
+                <input
+                  type="number"
+                  id="horizontalUnits"
+                  min="1"
+                  max="100"
+                  value="24"
+                />
+                <small style="color: #64748b; display: block; margin-top: 4px"
+                  >虚拟网格列数</small
+                >
+              </div>
+
+              <div class="form-group">
+                <label for="verticalUnits">垂直单元数</label>
+                <input
+                  type="number"
+                  id="verticalUnits"
+                  min="1"
+                  max="100"
+                  value="18"
+                />
+                <small style="color: #64748b; display: block; margin-top: 4px"
+                  >虚拟网格行数</small
+                >
+              </div>
+
+              <div class="form-group">
+                <label for="containerMargin">整体外边距 (px)</label>
+                <input
+                  type="number"
+                  id="containerMargin"
+                  min="0"
+                  max="50"
+                  value="10"
+                />
+                <small style="color: #64748b; display: block; margin-top: 4px"
+                  >容器内边距</small
+                >
+              </div>
+
+              <div class="form-group">
+                <label for="itemMargin">区域间隙 (px)</label>
+                <input
+                  type="number"
+                  id="itemMargin"
+                  min="0"
+                  max="30"
+                  value="5"
+                />
+                <small style="color: #64748b; display: block; margin-top: 4px"
+                  >区域之间的间距</small
+                >
+              </div>
+
+              <div class="form-group">
+                <label for="layoutStyle">布局样式</label>
+                <select id="layoutStyle">
+                  <option value="rectangle">矩形</option>
+                  <option value="rounded">圆角矩形</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>标题显示</label>
+                <div class="toggle-switch">
+                  <input type="checkbox" id="showTitles" />
+                  <label for="showTitles" style="margin-bottom: 0"
+                    >显示区域标题</label
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h2 class="section-title">新增区域配置</h2>
+
+            <div class="config-grid">
+              <div class="form-group">
+                <label for="newItemTitle">区域标题</label>
+                <input type="text" id="newItemTitle" value="新区块" />
+              </div>
+
+              <div class="form-group">
+                <label for="newItemWidth">宽度 (单元)</label>
+                <input
+                  type="number"
+                  id="newItemWidth"
+                  min="2"
+                  max="24"
+                  value="6"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="newItemHeight">高度 (单元)</label>
+                <input
+                  type="number"
+                  id="newItemHeight"
+                  min="2"
+                  max="18"
+                  value="4"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="newItemMinWidth">最小宽度 (单元)</label>
+                <input
+                  type="number"
+                  id="newItemMinWidth"
+                  min="1"
+                  max="12"
+                  value="2"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="newItemMinHeight">最小高度 (单元)</label>
+                <input
+                  type="number"
+                  id="newItemMinHeight"
+                  min="1"
+                  max="12"
+                  value="2"
+                />
+              </div>
+            </div>
+
+            <div class="form-group full-width">
+              <label for="newItemContent">区域内容</label>
+              <textarea id="newItemContent" rows="3">
+这里是新区域的内容，可以自由编辑和调整大小。</textarea
+              >
+            </div>
+
+            <div class="action-buttons">
+              <button id="addLayoutItem" class="btn-success">
+                添加布局区域
+              </button>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h2 class="section-title">区域管理</h2>
+            <div id="layoutItemsList">
+              <!-- 布局项列表将通过JS动态生成 -->
+            </div>
+
+            <div class="action-buttons">
+              <button id="resetLayout" class="btn-secondary">重置布局</button>
+              <button id="clearLayout" class="btn-danger">清空布局</button>
+            </div>
+          </div>
+
+          <div class="status-bar">
+            <div>
+              <span class="status-indicator" id="statusIndicator"></span>
+              <span id="statusText">就绪</span>
+            </div>
+            <div id="itemCount">区域: 0</div>
+          </div>
+        </div>
+
+        <!-- 布局显示区域 -->
+        <div class="layout-container">
+          <h2 class="section-title">布局预览</h2>
+          <div class="layout-area" id="layoutArea">
+            <div class="grid-info" id="gridInfo">
+              网格: 24x18 | 外边距: 10px | 间隙: 5px
+            </div>
+            <div id="layoutCanvas"></div>
+          </div>
+
+          <div class="action-buttons">
+            <button id="exportLayout" class="btn-success">导出布局配置</button>
+            <button id="importLayout" class="btn-secondary">
+              导入布局配置
+            </button>
+          </div>
+
+          <div class="info-box">
+            <h3>使用说明</h3>
+            <ol>
+              <li>调整"整体配置"参数定义网格系统和外边距</li>
+              <li>配置"新增区域配置"参数后点击"添加布局区域"</li>
+              <li>拖拽区域边缘调整大小（自动联动相邻区域）</li>
+              <li>切换"圆角矩形"选项改变样式</li>
+              <li>开启"显示区域标题"为每个区域添加标题</li>
+              <li>点击区域列表中的"编辑"或"删除"按钮管理区域</li>
+              <li>使用"导出布局配置"保存当前布局</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // WebLayoutBuilder类 (之前提供的代码)
+      class WebLayoutBuilder {
+        constructor(containerId, options = {}) {
+          // 默认配置
+          this.config = {
+            horizontalUnits: options.horizontalUnits || 24,
+            verticalUnits: options.verticalUnits || null,
+            style: options.style || "rectangle",
+            showTitles: options.showTitles || false,
+            containerWidth: options.containerWidth || "100%",
+            containerHeight: options.containerHeight || "600px",
+            theme: options.theme || "light-blue",
+            containerMargin: options.containerMargin || 10,
+            itemMargin: options.itemMargin || 5,
+          };
+
+          // 白蓝色系主题配置
+          this.themeColors = {
+            "light-blue": {
+              containerBg: "#f8fafc",
+              itemBg: "#ffffff",
+              itemBorder: "#e2e8f0",
+              itemHoverBorder: "#3b82f6",
+              titleBg: "#eff6ff",
+              titleText: "#1e40af",
+              contentText: "#334155",
+              handleColor: "#3b82f6",
+              handleHover: "#2563eb",
+              gridLine: "#e2e8f0",
+              shadow:
+                "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+              shadowHover:
+                "0 10px 15px -3px rgba(59, 130, 246, 0.1), 0 4px 6px -2px rgba(59, 130, 246, 0.05)",
+            },
+          };
+
+          this.layoutItems = [];
+          this.dragging = null;
+          this.activeHandles = new Set();
+
+          this.container = document.getElementById(containerId);
+          if (!this.container) {
+            throw new Error(`找不到ID为"${containerId}"的容器元素`);
+          }
+
+          this.cellWidth = 0;
+          this.cellHeight = 0;
+          this.gridContainer = null;
+
+          this.init();
+        }
+
+        init() {
+          this.setupContainer();
+          this.setupGrid();
+          this.setupEventListeners();
+          this.render();
+        }
+
+        setupContainer() {
+          const theme = this.themeColors[this.config.theme];
+
+          this.container.style.position = "relative";
+          this.container.style.width = this.config.containerWidth;
+          this.container.style.height = this.config.containerHeight;
+          this.container.style.border = "1px solid " + theme.itemBorder;
+          this.container.style.overflow = "hidden";
+          this.container.style.backgroundColor = theme.containerBg;
+          this.container.style.borderRadius = "8px";
+          this.container.style.padding = `${this.config.containerMargin}px`;
+          this.container.style.boxSizing = "border-box";
+        }
+
+        setupGrid() {
+          if (!this.config.verticalUnits) {
+            this.calculateVerticalUnits();
+          }
+
+          this.calculateCellDimensions();
+          this.createGridLines();
+        }
+
+        calculateVerticalUnits() {
+          const containerHeight =
+            this.container.clientHeight - this.config.containerMargin * 2;
+          this.config.verticalUnits = Math.floor(containerHeight / 30);
+        }
+
+        calculateCellDimensions() {
+          const containerWidth =
+            this.container.clientWidth - this.config.containerMargin * 2;
+          const containerHeight =
+            this.container.clientHeight - this.config.containerMargin * 2;
+
+          this.cellWidth = containerWidth / this.config.horizontalUnits;
+          this.cellHeight = containerHeight / this.config.verticalUnits;
+        }
+
+        createGridLines() {
+          if (this.gridContainer) {
+            this.gridContainer.remove();
+          }
+
+          const theme = this.themeColors[this.config.theme];
+          this.gridContainer = document.createElement("div");
+          this.gridContainer.className = "layout-grid-lines";
+          this.gridContainer.style.position = "absolute";
+          this.gridContainer.style.top = `${this.config.containerMargin}px`;
+          this.gridContainer.style.left = `${this.config.containerMargin}px`;
+          this.gridContainer.style.width = `calc(100% - ${
+            this.config.containerMargin * 2
+          }px)`;
+          this.gridContainer.style.height = `calc(100% - ${
+            this.config.containerMargin * 2
+          }px)`;
+          this.gridContainer.style.pointerEvents = "none";
+          this.gridContainer.style.zIndex = "0";
+
+          for (let i = 1; i < this.config.horizontalUnits; i++) {
+            const line = document.createElement("div");
+            line.style.position = "absolute";
+            line.style.left = `${i * this.cellWidth}px`;
+            line.style.top = "0";
+            line.style.width = "1px";
+            line.style.height = "100%";
+            line.style.backgroundColor = theme.gridLine;
+            line.style.opacity = "0.3";
+            this.gridContainer.appendChild(line);
+          }
+
+          for (let i = 1; i < this.config.verticalUnits; i++) {
+            const line = document.createElement("div");
+            line.style.position = "absolute";
+            line.style.left = "0";
+            line.style.top = `${i * this.cellHeight}px`;
+            line.style.width = "100%";
+            line.style.height = "1px";
+            line.style.backgroundColor = theme.gridLine;
+            line.style.opacity = "0.3";
+            this.gridContainer.appendChild(line);
+          }
+
+          this.container.appendChild(this.gridContainer);
+        }
+
+        setupEventListeners() {
+          let resizeTimeout;
+          const handleResize = () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+              this.calculateCellDimensions();
+              this.createGridLines();
+              this.render();
+            }, 200);
+          };
+          window.addEventListener("resize", handleResize);
+
+          this.container.addEventListener(
+            "mousedown",
+            this.handleMouseDown.bind(this)
+          );
+          document.addEventListener(
+            "mousemove",
+            this.handleMouseMove.bind(this)
+          );
+          document.addEventListener("mouseup", this.handleMouseUp.bind(this));
+
+          this.container.addEventListener(
+            "mouseover",
+            this.handleHandleHover.bind(this)
+          );
+          this.container.addEventListener(
+            "mouseout",
+            this.handleHandleOut.bind(this)
+          );
+        }
+
+        addItem(options = {}) {
+          const defaultItem = {
+            id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            x: 1,
+            y: 1,
+            width: 4,
+            height: 4,
+            title: "新区块",
+            content: "这里是内容区域",
+            minWidth: 2,
+            minHeight: 2,
+            zIndex: 1,
+          };
+
+          const item = { ...defaultItem, ...options };
+
+          this.validateAndAdjustItem(item);
+
+          item.zIndex =
+            this.layoutItems.length > 0
+              ? Math.max(...this.layoutItems.map((i) => i.zIndex)) + 1
+              : 1;
+
+          this.layoutItems.push(item);
+          this.render();
+
+          return item.id;
+        }
+
+        validateAndAdjustItem(item) {
+          item.x = Math.max(
+            1,
+            Math.min(item.x, this.config.horizontalUnits - item.width + 1)
+          );
+          item.y = Math.max(
+            1,
+            Math.min(item.y, this.config.verticalUnits - item.height + 1)
+          );
+          item.width = Math.max(
+            item.minWidth,
+            Math.min(item.width, this.config.horizontalUnits - item.x + 1)
+          );
+          item.height = Math.max(
+            item.minHeight,
+            Math.min(item.height, this.config.verticalUnits - item.y + 1)
+          );
+        }
+
+        removeItem(itemId) {
+          const index = this.layoutItems.findIndex(
+            (item) => item.id === itemId
+          );
+          if (index !== -1) {
+            this.layoutItems.splice(index, 1);
+            this.render();
+            return true;
+          }
+          return false;
+        }
+
+        updateItem(itemId, updates) {
+          const item = this.layoutItems.find((item) => item.id === itemId);
+          if (item) {
+            Object.assign(item, updates);
+            this.validateAndAdjustItem(item);
+            this.render();
+            return true;
+          }
+          return false;
+        }
+
+        getItem(itemId) {
+          return this.layoutItems.find((item) => item.id === itemId);
+        }
+
+        getAllItems() {
+          return [...this.layoutItems];
+        }
+
+        updateConfig(newConfig) {
+          Object.assign(this.config, newConfig);
+
+          if (
+            newConfig.horizontalUnits ||
+            newConfig.containerWidth ||
+            newConfig.verticalUnits ||
+            newConfig.containerHeight ||
+            newConfig.containerMargin ||
+            newConfig.itemMargin
+          ) {
+            this.setupGrid();
+          }
+
+          this.render();
+        }
+
+        getConfig() {
+          return { ...this.config };
+        }
+
+        render() {
+          const children = Array.from(this.container.children);
+          children.forEach((child) => {
+            if (!child.classList.contains("layout-grid-lines")) {
+              child.remove();
+            }
+          });
+
+          const sortedItems = [...this.layoutItems].sort(
+            (a, b) => a.zIndex - b.zIndex
+          );
+          sortedItems.forEach((item) => {
+            this.renderItem(item);
+          });
+        }
+
+        renderItem(item) {
+          const theme = this.themeColors[this.config.theme];
+          const itemElement = document.createElement("div");
+          itemElement.id = item.id;
+          itemElement.className = "layout-item";
+
+          const itemMargin = this.config.itemMargin;
+          const containerMargin = this.config.containerMargin;
+
+          const marginLeft = item.x === 1 ? 0 : itemMargin;
+          const marginTop = item.y === 1 ? 0 : itemMargin;
+          const marginRight =
+            item.x + item.width - 1 === this.config.horizontalUnits
+              ? 0
+              : itemMargin;
+          const marginBottom =
+            item.y + item.height - 1 === this.config.verticalUnits
+              ? 0
+              : itemMargin;
+
+          const actualWidth =
+            item.width * this.cellWidth - (marginLeft + marginRight);
+          const actualHeight =
+            item.height * this.cellHeight - (marginTop + marginBottom);
+
+          const actualLeft =
+            containerMargin + (item.x - 1) * this.cellWidth + marginLeft;
+          const actualTop =
+            containerMargin + (item.y - 1) * this.cellHeight + marginTop;
+
+          itemElement.style.position = "absolute";
+          itemElement.style.left = `${actualLeft}px`;
+          itemElement.style.top = `${actualTop}px`;
+          itemElement.style.width = `${actualWidth}px`;
+          itemElement.style.height = `${actualHeight}px`;
+          itemElement.style.backgroundColor = theme.itemBg;
+          itemElement.style.border = `1px solid ${theme.itemBorder}`;
+          itemElement.style.boxSizing = "border-box";
+          itemElement.style.transition = "all 0.2s ease";
+          itemElement.style.zIndex = item.zIndex;
+
+          if (this.config.style === "rounded") {
+            itemElement.style.borderRadius = "8px";
+          }
+          itemElement.style.boxShadow = theme.shadow;
+
+          itemElement.addEventListener("mouseenter", () => {
+            itemElement.style.boxShadow = theme.shadowHover;
+            itemElement.style.borderColor = theme.itemHoverBorder;
+          });
+
+          itemElement.addEventListener("mouseleave", () => {
+            if (!this.dragging || this.dragging.itemId !== item.id) {
+              itemElement.style.boxShadow = theme.shadow;
+              itemElement.style.borderColor = theme.itemBorder;
+            }
+          });
+
+          if (this.config.showTitles) {
+            const titleElement = document.createElement("div");
+            titleElement.className = "layout-item-title";
+            titleElement.textContent = item.title;
+            titleElement.style.padding = "12px 16px";
+            titleElement.style.backgroundColor = theme.titleBg;
+            titleElement.style.borderBottom = `1px solid ${theme.itemBorder}`;
+            titleElement.style.color = theme.titleText;
+            titleElement.style.fontWeight = "600";
+            titleElement.style.fontSize = "14px";
+            titleElement.style.overflow = "hidden";
+            titleElement.style.textOverflow = "ellipsis";
+            titleElement.style.whiteSpace = "nowrap";
+            titleElement.style.userSelect = "none";
+
+            itemElement.appendChild(titleElement);
+          }
+
+          const contentElement = document.createElement("div");
+          contentElement.className = "layout-item-content";
+          contentElement.textContent = item.content || "";
+          contentElement.style.padding = "16px";
+          contentElement.style.height = this.config.showTitles
+            ? `calc(100% - ${this.getTitleHeight()}px)`
+            : "100%";
+          contentElement.style.overflow = "auto";
+          contentElement.style.fontSize = "13px";
+          contentElement.style.color = theme.contentText;
+          contentElement.style.lineHeight = "1.6";
+          contentElement.style.userSelect = "none";
+
+          itemElement.appendChild(contentElement);
+
+          this.addResizeHandles(
+            itemElement,
+            item,
+            marginLeft,
+            marginTop,
+            marginRight,
+            marginBottom
+          );
+
+          this.container.appendChild(itemElement);
+        }
+
+        getTitleHeight() {
+          return 45;
+        }
+
+        addResizeHandles(
+          itemElement,
+          item,
+          marginLeft,
+          marginTop,
+          marginRight,
+          marginBottom
+        ) {
+          const handleSize = 6;
+          const handleOffset = -handleSize / 2;
+          const theme = this.themeColors[this.config.theme];
+
+          const createHandle = (direction) => {
+            const handle = document.createElement("div");
+            handle.className = `resize-handle ${direction}`;
+            handle.dataset.itemId = item.id;
+            handle.dataset.direction = direction;
+            handle.dataset.marginLeft = marginLeft;
+            handle.dataset.marginTop = marginTop;
+            handle.dataset.marginRight = marginRight;
+            handle.dataset.marginBottom = marginBottom;
+
+            handle.style.position = "absolute";
+            handle.style.backgroundColor = theme.handleColor;
+            handle.style.opacity = "0";
+            handle.style.transition =
+              "opacity 0.2s ease, background-color 0.2s ease";
+            handle.style.zIndex = "100";
+
+            switch (direction) {
+              case "bottom":
+                handle.style.bottom = `${handleOffset}px`;
+                handle.style.left = "0";
+                handle.style.width = "100%";
+                handle.style.height = `${handleSize}px`;
+                handle.style.cursor = "ns-resize";
+                break;
+              case "right":
+                handle.style.right = `${handleOffset}px`;
+                handle.style.top = "0";
+                handle.style.width = `${handleSize}px`;
+                handle.style.height = "100%";
+                handle.style.cursor = "ew-resize";
+                break;
+              case "corner":
+                handle.style.right = `${handleOffset}px`;
+                handle.style.bottom = `${handleOffset}px`;
+                handle.style.width = `${handleSize * 2}px`;
+                handle.style.height = `${handleSize * 2}px`;
+                handle.style.cursor = "nwse-resize";
+                handle.style.borderRadius = "2px";
+                break;
+            }
+
+            handle.addEventListener("mouseover", () => {
+              if (!this.dragging) {
+                handle.style.opacity = "1";
+                handle.style.backgroundColor = theme.handleHover;
+                this.activeHandles.add(handle);
+              }
+            });
+
+            handle.addEventListener("mouseout", () => {
+              if (!this.dragging) {
+                handle.style.opacity = "0";
+                handle.style.backgroundColor = theme.handleColor;
+                this.activeHandles.delete(handle);
+              }
+            });
+
+            return handle;
+          };
+
+          itemElement.appendChild(createHandle("bottom"));
+          itemElement.appendChild(createHandle("right"));
+          itemElement.appendChild(createHandle("corner"));
+        }
+
+        handleHandleHover(event) {
+          const handle = event.target.closest(".resize-handle");
+          if (handle && !this.dragging) {
+            handle.style.opacity = "1";
+            const theme = this.themeColors[this.config.theme];
+            handle.style.backgroundColor = theme.handleHover;
+            this.activeHandles.add(handle);
+          }
+        }
+
+        handleHandleOut(event) {
+          const handle = event.target.closest(".resize-handle");
+          if (handle && !this.dragging && this.activeHandles.has(handle)) {
+            handle.style.opacity = "0";
+            const theme = this.themeColors[this.config.theme];
+            handle.style.backgroundColor = theme.handleColor;
+            this.activeHandles.delete(handle);
+          }
+        }
+
+        handleMouseDown(event) {
+          const handle = event.target.closest(".resize-handle");
+          if (!handle) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          const itemId = handle.dataset.itemId;
+          const direction = handle.dataset.direction;
+          const marginLeft = parseInt(handle.dataset.marginLeft) || 0;
+          const marginTop = parseInt(handle.dataset.marginTop) || 0;
+          const marginRight = parseInt(handle.dataset.marginRight) || 0;
+          const marginBottom = parseInt(handle.dataset.marginBottom) || 0;
+
+          const item = this.layoutItems.find((item) => item.id === itemId);
+
+          if (!item) return;
+
+          const adjacentItems = this.findAdjacentItems(item, direction);
+
+          this.dragging = {
+            itemId,
+            direction,
+            startX: event.clientX,
+            startY: event.clientY,
+            item: { ...item },
+            margins: { marginLeft, marginTop, marginRight, marginBottom },
+            adjacentItems: adjacentItems.map((adjItem) => ({
+              id: adjItem.id,
+              original: { ...adjItem },
+            })),
+            containerRect: this.container.getBoundingClientRect(),
+          };
+
+          this.bringToFront(itemId);
+
+          const itemElement = document.getElementById(itemId);
+          if (itemElement) {
+            const theme = this.themeColors[this.config.theme];
+            itemElement.style.boxShadow = theme.shadowHover;
+            itemElement.style.borderColor = theme.handleHover;
+            itemElement.style.zIndex = 1000;
+
+            const handles = itemElement.querySelectorAll(".resize-handle");
+            handles.forEach((h) => {
+              h.style.opacity = "1";
+              h.style.backgroundColor = theme.handleHover;
+            });
+          }
+        }
+
+        findAdjacentItems(item, direction) {
+          const adjacentItems = [];
+
+          this.layoutItems.forEach((otherItem) => {
+            if (otherItem.id === item.id) return;
+
+            switch (direction) {
+              case "right":
+                if (
+                  Math.abs(item.x + item.width - otherItem.x) <= 1 &&
+                  this.isVerticallyOverlapping(item, otherItem)
+                ) {
+                  adjacentItems.push(otherItem);
+                }
+                break;
+              case "bottom":
+                if (
+                  Math.abs(item.y + item.height - otherItem.y) <= 1 &&
+                  this.isHorizontallyOverlapping(item, otherItem)
+                ) {
+                  adjacentItems.push(otherItem);
+                }
+                break;
+              case "corner":
+                if (
+                  (Math.abs(item.x + item.width - otherItem.x) <= 1 &&
+                    this.isVerticallyOverlapping(item, otherItem)) ||
+                  (Math.abs(item.y + item.height - otherItem.y) <= 1 &&
+                    this.isHorizontallyOverlapping(item, otherItem))
+                ) {
+                  adjacentItems.push(otherItem);
+                }
+                break;
+            }
+          });
+
+          return adjacentItems;
+        }
+
+        isVerticallyOverlapping(item1, item2) {
+          return !(
+            item1.y >= item2.y + item2.height ||
+            item2.y >= item1.y + item1.height
+          );
+        }
+
+        isHorizontallyOverlapping(item1, item2) {
+          return !(
+            item1.x >= item2.x + item2.width || item2.x >= item1.x + item1.width
+          );
+        }
+
+        bringToFront(itemId) {
+          const item = this.layoutItems.find((item) => item.id === itemId);
+          if (item) {
+            const maxZIndex = Math.max(
+              ...this.layoutItems.map((i) => i.zIndex)
+            );
+            item.zIndex = maxZIndex + 1;
+          }
+        }
+
+        handleMouseMove(event) {
+          if (!this.dragging) return;
+
+          event.preventDefault();
+
+          const item = this.layoutItems.find(
+            (item) => item.id === this.dragging.itemId
+          );
+          if (!item) return;
+
+          const deltaX = event.clientX - this.dragging.startX;
+          const deltaY = event.clientY - this.dragging.startY;
+
+          const gridDeltaX = Math.round(deltaX / this.cellWidth);
+          const gridDeltaY = Math.round(deltaY / this.cellHeight);
+
+          const originalItem = { ...item };
+
+          let adjusted = false;
+          switch (this.dragging.direction) {
+            case "bottom":
+              adjusted = this.adjustHeight(item, gridDeltaY);
+              break;
+            case "right":
+              adjusted = this.adjustWidth(item, gridDeltaX);
+              break;
+            case "corner":
+              adjusted = this.adjustBoth(item, gridDeltaX, gridDeltaY);
+              break;
+          }
+
+          if (adjusted) {
+            this.adjustAdjacentItems(item, originalItem);
+            this.renderAffectedItems(item);
+          }
+        }
+
+        adjustHeight(item, deltaY) {
+          const newHeight = this.dragging.item.height + deltaY;
+
+          if (
+            newHeight >= item.minHeight &&
+            item.y + newHeight <= this.config.verticalUnits + 1
+          ) {
+            item.height = newHeight;
+            return true;
+          }
+          return false;
+        }
+
+        adjustWidth(item, deltaX) {
+          const newWidth = this.dragging.item.width + deltaX;
+
+          if (
+            newWidth >= item.minWidth &&
+            item.x + newWidth <= this.config.horizontalUnits + 1
+          ) {
+            item.width = newWidth;
+            return true;
+          }
+          return false;
+        }
+
+        adjustBoth(item, deltaX, deltaY) {
+          const newWidth = this.dragging.item.width + deltaX;
+          const newHeight = this.dragging.item.height + deltaY;
+
+          if (
+            newWidth >= item.minWidth &&
+            newHeight >= item.minHeight &&
+            item.x + newWidth <= this.config.horizontalUnits + 1 &&
+            item.y + newHeight <= this.config.verticalUnits + 1
+          ) {
+            item.width = newWidth;
+            item.height = newHeight;
+            return true;
+          }
+          return false;
+        }
+
+        adjustAdjacentItems(mainItem, originalMainItem) {
+          this.dragging.adjacentItems.forEach((adjacent) => {
+            const adjItem = this.layoutItems.find(
+              (item) => item.id === adjacent.id
+            );
+            if (!adjItem) return;
+
+            const original = adjacent.original;
+
+            switch (this.dragging.direction) {
+              case "right":
+                if (adjItem.x === originalMainItem.x + originalMainItem.width) {
+                  const widthChange = mainItem.width - originalMainItem.width;
+                  adjItem.x += widthChange;
+                  adjItem.width = Math.max(
+                    adjItem.minWidth,
+                    adjItem.width - widthChange
+                  );
+                }
+                break;
+
+              case "bottom":
+                if (
+                  adjItem.y ===
+                  originalMainItem.y + originalMainItem.height
+                ) {
+                  const heightChange =
+                    mainItem.height - originalMainItem.height;
+                  adjItem.y += heightChange;
+                  adjItem.height = Math.max(
+                    adjItem.minHeight,
+                    adjItem.height - heightChange
+                  );
+                }
+                break;
+
+              case "corner":
+                if (adjItem.x === originalMainItem.x + originalMainItem.width) {
+                  const widthChange = mainItem.width - originalMainItem.width;
+                  adjItem.x += widthChange;
+                  adjItem.width = Math.max(
+                    adjItem.minWidth,
+                    adjItem.width - widthChange
+                  );
+                }
+                if (
+                  adjItem.y ===
+                  originalMainItem.y + originalMainItem.height
+                ) {
+                  const heightChange =
+                    mainItem.height - originalMainItem.height;
+                  adjItem.y += heightChange;
+                  adjItem.height = Math.max(
+                    adjItem.minHeight,
+                    adjItem.height - heightChange
+                  );
+                }
+                break;
+            }
+          });
+        }
+
+        renderAffectedItems(changedItem) {
+          const affectedItems = new Set([changedItem.id]);
+
+          this.dragging.adjacentItems.forEach((adj) => {
+            affectedItems.add(adj.id);
+          });
+
+          affectedItems.forEach((itemId) => {
+            const item = this.layoutItems.find((i) => i.id === itemId);
+            if (item) {
+              const oldElement = document.getElementById(itemId);
+              if (oldElement) {
+                oldElement.remove();
+              }
+              this.renderItem(item);
+            }
+          });
+        }
+
+        handleMouseUp() {
+          if (!this.dragging) return;
+
+          const theme = this.themeColors[this.config.theme];
+
+          const itemElement = document.getElementById(this.dragging.itemId);
+          if (itemElement) {
+            itemElement.style.boxShadow = theme.shadow;
+            itemElement.style.borderColor = theme.itemBorder;
+
+            const handles = itemElement.querySelectorAll(".resize-handle");
+            handles.forEach((h) => {
+              h.style.opacity = "0";
+              h.style.backgroundColor = theme.handleColor;
+            });
+
+            this.activeHandles.clear();
+          }
+
+          const itemId = this.dragging.itemId;
+          this.dragging = null;
+
+          if (this.onItemResized) {
+            this.onItemResized({ itemId });
+          }
+        }
+
+        clear() {
+          this.layoutItems = [];
+          this.render();
+        }
+
+        exportLayout() {
+          return {
+            config: { ...this.config },
+            items: this.layoutItems.map((item) => ({ ...item })),
+            version: "2.0",
+          };
+        }
+
+        importLayout(layoutData) {
+          if (layoutData.config) {
+            this.updateConfig(layoutData.config);
+          }
+
+          if (layoutData.items && Array.isArray(layoutData.items)) {
+            this.layoutItems = layoutData.items.map((item) => ({ ...item }));
+            this.render();
+          }
+        }
+
+        destroy() {
+          const children = Array.from(this.container.children);
+          children.forEach((child) => child.remove());
+
+          this.container.innerHTML = "";
+          this.layoutItems = [];
+          this.activeHandles.clear();
+        }
+      }
+
+      // 可视化配置界面控制器
+      class LayoutBuilderUI {
+        constructor() {
+          this.layoutBuilder = null;
+          this.currentItemId = null;
+          this.init();
+        }
+
+        init() {
+          this.cacheElements();
+          this.bindEvents();
+          this.initLayoutBuilder();
+          this.updateStatus();
+        }
+
+        cacheElements() {
+          // 配置输入元素
+          this.horizontalUnitsInput =
+            document.getElementById("horizontalUnits");
+          this.verticalUnitsInput = document.getElementById("verticalUnits");
+          this.containerMarginInput =
+            document.getElementById("containerMargin");
+          this.itemMarginInput = document.getElementById("itemMargin");
+          this.layoutStyleSelect = document.getElementById("layoutStyle");
+          this.showTitlesCheckbox = document.getElementById("showTitles");
+
+          // 新建布局项输入
+          this.newItemTitleInput = document.getElementById("newItemTitle");
+          this.newItemWidthInput = document.getElementById("newItemWidth");
+          this.newItemHeightInput = document.getElementById("newItemHeight");
+          this.newItemMinWidthInput =
+            document.getElementById("newItemMinWidth");
+          this.newItemMinHeightInput =
+            document.getElementById("newItemMinHeight");
+          this.newItemContentInput = document.getElementById("newItemContent");
+
+          // 按钮
+          this.addLayoutItemBtn = document.getElementById("addLayoutItem");
+          this.resetLayoutBtn = document.getElementById("resetLayout");
+          this.clearLayoutBtn = document.getElementById("clearLayout");
+          this.exportLayoutBtn = document.getElementById("exportLayout");
+          this.importLayoutBtn = document.getElementById("importLayout");
+
+          // 布局区域和信息
+          this.layoutCanvas = document.getElementById("layoutCanvas");
+          this.gridInfo = document.getElementById("gridInfo");
+          this.layoutItemsList = document.getElementById("layoutItemsList");
+          this.statusIndicator = document.getElementById("statusIndicator");
+          this.statusText = document.getElementById("statusText");
+          this.itemCount = document.getElementById("itemCount");
+        }
+
+        bindEvents() {
+          // 配置变更事件
+          this.horizontalUnitsInput.addEventListener("change", () =>
+            this.updateConfig()
+          );
+          this.verticalUnitsInput.addEventListener("change", () =>
+            this.updateConfig()
+          );
+          this.containerMarginInput.addEventListener("change", () =>
+            this.updateConfig()
+          );
+          this.itemMarginInput.addEventListener("change", () =>
+            this.updateConfig()
+          );
+          this.layoutStyleSelect.addEventListener("change", () =>
+            this.updateConfig()
+          );
+          this.showTitlesCheckbox.addEventListener("change", () =>
+            this.updateConfig()
+          );
+
+          // 按钮点击事件
+          this.addLayoutItemBtn.addEventListener("click", () =>
+            this.addLayoutItem()
+          );
+          this.resetLayoutBtn.addEventListener("click", () =>
+            this.resetLayout()
+          );
+          this.clearLayoutBtn.addEventListener("click", () =>
+            this.clearLayout()
+          );
+          this.exportLayoutBtn.addEventListener("click", () =>
+            this.exportLayout()
+          );
+          this.importLayoutBtn.addEventListener("click", () =>
+            this.importLayout()
+          );
+        }
+
+        initLayoutBuilder() {
+          // 初始化WebLayoutBuilder实例
+          this.layoutBuilder = new WebLayoutBuilder("layoutCanvas", {
+            horizontalUnits: parseInt(this.horizontalUnitsInput.value),
+            verticalUnits: parseInt(this.verticalUnitsInput.value),
+            style: this.layoutStyleSelect.value,
+            showTitles: this.showTitlesCheckbox.checked,
+            containerMargin: parseInt(this.containerMarginInput.value),
+            itemMargin: parseInt(this.itemMarginInput.value),
+          });
+
+          // 监听布局变化
+          this.layoutBuilder.onItemResized = (data) => {
+            this.updateStatus("布局已更新");
+            this.renderLayoutItemsList();
+          };
+
+          // 添加示例布局项
+          this.addExampleItems();
+        }
+
+        updateConfig() {
+          const newConfig = {
+            horizontalUnits: parseInt(this.horizontalUnitsInput.value) || 24,
+            verticalUnits: parseInt(this.verticalUnitsInput.value) || 18,
+            style: this.layoutStyleSelect.value,
+            showTitles: this.showTitlesCheckbox.checked,
+            containerMargin: parseInt(this.containerMarginInput.value) || 10,
+            itemMargin: parseInt(this.itemMarginInput.value) || 5,
+          };
+
+          this.layoutBuilder.updateConfig(newConfig);
+          this.updateGridInfo();
+          this.updateStatus("配置已更新");
+        }
+
+        updateGridInfo() {
+          const config = this.layoutBuilder.getConfig();
+          this.gridInfo.textContent = `网格: ${config.horizontalUnits}x${config.verticalUnits} | 外边距: ${config.containerMargin}px | 间隙: ${config.itemMargin}px`;
+        }
+
+        addExampleItems() {
+          // 清空现有布局项
+          this.layoutBuilder.clear();
+
+          // 添加示例布局项
+          this.layoutBuilder.addItem({
+            x: 1,
+            y: 1,
+            width: 6,
+            height: 8,
+            title: "侧边栏",
+            content: "这里是侧边栏区域，可以放置导航菜单或工具面板。",
+            minWidth: 4,
+            minHeight: 4,
+          });
+
+          this.layoutBuilder.addItem({
+            x: 7,
+            y: 1,
+            width: 16,
+            height: 12,
+            title: "主内容区",
+            content:
+              "这里是主内容区域，用于显示主要内容。支持拖拽调整大小，相邻区域会自动联动调整。",
+            minWidth: 6,
+            minHeight: 6,
+          });
+
+          this.layoutBuilder.addItem({
+            x: 1,
+            y: 9,
+            width: 6,
+            height: 6,
+            title: "底部面板",
+            content: "这里是底部面板区域，可用于显示状态信息或辅助工具。",
+            minWidth: 4,
+            minHeight: 3,
+          });
+
+          this.renderLayoutItemsList();
+          this.updateGridInfo();
+          this.updateStatus("示例布局已加载");
+        }
+
+        addLayoutItem() {
+          const width = parseInt(this.newItemWidthInput.value) || 6;
+          const height = parseInt(this.newItemHeightInput.value) || 4;
+          const minWidth = parseInt(this.newItemMinWidthInput.value) || 2;
+          const minHeight = parseInt(this.newItemMinHeightInput.value) || 2;
+          const title = this.newItemTitleInput.value || "新区块";
+          const content =
+            this.newItemContentInput.value || "这里是新区域的内容";
+
+          // 查找可放置的位置（简单算法）
+          const position = this.findAvailablePosition(width, height);
+
+          if (position) {
+            this.layoutBuilder.addItem({
+              x: position.x,
+              y: position.y,
+              width: width,
+              height: height,
+              minWidth: minWidth,
+              minHeight: minHeight,
+              title: title,
+              content: content,
+            });
+
+            this.renderLayoutItemsList();
+            this.updateStatus("新区域已添加");
+          } else {
+            this.updateStatus("没有足够的空间放置新区块", "warning");
+          }
+        }
+
+        findAvailablePosition(width, height) {
+          const config = this.layoutBuilder.getConfig();
+          const items = this.layoutBuilder.getAllItems();
+
+          // 简单的扫描算法
+          for (let y = 1; y <= config.verticalUnits - height + 1; y++) {
+            for (let x = 1; x <= config.horizontalUnits - width + 1; x++) {
+              let available = true;
+
+              for (const item of items) {
+                if (
+                  x < item.x + item.width &&
+                  x + width > item.x &&
+                  y < item.y + item.height &&
+                  y + height > item.y
+                ) {
+                  available = false;
+                  break;
+                }
+              }
+
+              if (available) {
+                return { x, y };
+              }
+            }
+          }
+
+          return null;
+        }
+
+        renderLayoutItemsList() {
+          const items = this.layoutBuilder.getAllItems();
+          this.layoutItemsList.innerHTML = "";
+
+          if (items.length === 0) {
+            this.layoutItemsList.innerHTML =
+              '<p style="color: #64748b; text-align: center; padding: 20px;">暂无布局区域</p>';
+            this.itemCount.textContent = "区域: 0";
+            return;
+          }
+
+          // 更新计数
+          this.itemCount.textContent = `区域: ${items.length}`;
+
+          items.forEach((item) => {
+            const itemElement = document.createElement("div");
+            itemElement.className = "layout-item-card";
+            itemElement.innerHTML = `
+                        <div class="layout-item-info">
+                            <div class="layout-item-title">${item.title}</div>
+                            <div class="layout-item-details">
+                                位置: (${item.x}, ${item.y}) | 大小: ${item.width} × ${item.height} 单元
+                            </div>
+                        </div>
+                        <div class="layout-item-controls">
+                            <button class="btn-secondary edit-item" data-item-id="${item.id}">编辑</button>
+                            <button class="btn-danger delete-item" data-item-id="${item.id}">删除</button>
+                        </div>
+                    `;
+
+            this.layoutItemsList.appendChild(itemElement);
+          });
+
+          // 绑定列表按钮事件
+          this.layoutItemsList
+            .querySelectorAll(".delete-item")
+            .forEach((btn) => {
+              btn.addEventListener("click", (e) => {
+                const itemId = e.target.dataset.itemId;
+                this.deleteLayoutItem(itemId);
+              });
+            });
+
+          this.layoutItemsList.querySelectorAll(".edit-item").forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+              const itemId = e.target.dataset.itemId;
+              this.editLayoutItem(itemId);
+            });
+          });
+        }
+
+        deleteLayoutItem(itemId) {
+          if (confirm("确定要删除这个布局区域吗？")) {
+            this.layoutBuilder.removeItem(itemId);
+            this.renderLayoutItemsList();
+            this.updateStatus("区域已删除");
+          }
+        }
+
+        editLayoutItem(itemId) {
+          const item = this.layoutBuilder.getItem(itemId);
+          if (!item) return;
+
+          const newTitle = prompt("请输入新的标题:", item.title);
+          if (newTitle !== null) {
+            const newContent = prompt("请输入新的内容:", item.content);
+            if (newContent !== null) {
+              this.layoutBuilder.updateItem(itemId, {
+                title: newTitle,
+                content: newContent,
+              });
+
+              this.renderLayoutItemsList();
+              this.updateStatus("区域已更新");
+            }
+          }
+        }
+
+        resetLayout() {
+          if (confirm("确定要重置为示例布局吗？当前布局将丢失。")) {
+            this.addExampleItems();
+            this.updateStatus("布局已重置");
+          }
+        }
+
+        clearLayout() {
+          if (confirm("确定要清空所有布局区域吗？")) {
+            this.layoutBuilder.clear();
+            this.renderLayoutItemsList();
+            this.updateStatus("布局已清空");
+          }
+        }
+
+        exportLayout() {
+          const layoutData = this.layoutBuilder.exportLayout();
+          const dataStr = JSON.stringify(layoutData, null, 2);
+          const dataUri =
+            "data:application/json;charset=utf-8," +
+            encodeURIComponent(dataStr);
+
+          const exportFileDefaultName =
+            "layout-config-" + new Date().toISOString().slice(0, 10) + ".json";
+
+          const linkElement = document.createElement("a");
+          linkElement.setAttribute("href", dataUri);
+          linkElement.setAttribute("download", exportFileDefaultName);
+          linkElement.click();
+
+          this.updateStatus("布局配置已导出");
+        }
+
+        importLayout() {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = ".json";
+
+          input.onchange = (e) => {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = (event) => {
+              try {
+                const layoutData = JSON.parse(event.target.result);
+
+                // 更新UI配置
+                if (layoutData.config) {
+                  this.horizontalUnitsInput.value =
+                    layoutData.config.horizontalUnits || 24;
+                  this.verticalUnitsInput.value =
+                    layoutData.config.verticalUnits || 18;
+                  this.containerMarginInput.value =
+                    layoutData.config.containerMargin || 10;
+                  this.itemMarginInput.value =
+                    layoutData.config.itemMargin || 5;
+                  this.layoutStyleSelect.value =
+                    layoutData.config.style || "rectangle";
+                  this.showTitlesCheckbox.checked =
+                    layoutData.config.showTitles || false;
+                }
+
+                // 导入布局
+                this.layoutBuilder.importLayout(layoutData);
+                this.updateConfig();
+                this.renderLayoutItemsList();
+
+                this.updateStatus("布局配置已导入");
+              } catch (error) {
+                console.error("导入失败:", error);
+                this.updateStatus("导入失败：文件格式不正确", "warning");
+              }
+            };
+
+            reader.readAsText(file);
+          };
+
+          input.click();
+        }
+
+        updateStatus(message = "就绪", type = "success") {
+          this.statusText.textContent = message;
+
+          // 更新状态指示灯
+          this.statusIndicator.className = "status-indicator";
+          if (type === "warning") {
+            this.statusIndicator.classList.add("warning");
+          } else if (type === "success") {
+            this.statusIndicator.classList.add("active");
+          } else {
+            this.statusIndicator.classList.add("inactive");
+          }
+
+          // 3秒后恢复"就绪"状态
+          if (message !== "就绪") {
+            setTimeout(() => {
+              this.statusText.textContent = "就绪";
+              this.statusIndicator.className = "status-indicator";
+              this.statusIndicator.classList.add("active");
+            }, 3000);
+          }
+        }
+      }
+
+      // 初始化布局工具UI
+      document.addEventListener("DOMContentLoaded", () => {
+        const layoutBuilderUI = new LayoutBuilderUI();
+      });
+    </script>
+  </body>
+</html>
