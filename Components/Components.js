@@ -47,12 +47,18 @@ function getRegistry() {
 }
 
 // 直接挂载到全局
-window.Components = {};
+window.Components = null; // 初始为null，表示尚未加载
 window.loadAll = loadAll;
 window.getRegistry = getRegistry;
 window.ComponentsRegistry = components;
 
-// 可选：自动执行加载
+// 自动执行加载
 loadAll().then((components) => {
   console.log("所有组件已加载", components);
+  // 触发自定义事件
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("NGComponentsLoaded", { detail: components })
+    );
+  }
 });
