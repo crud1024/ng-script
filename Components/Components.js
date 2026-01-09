@@ -50,6 +50,14 @@ function getRegistry() {
   return { ...components };
 }
 
+// 确保全局可用（针对非模块环境）
+if (typeof window !== "undefined") {
+  // 将主要函数挂载到window
+  window.loadAll = loadAll;
+  window.getRegistry = getRegistry;
+  window.ComponentsRegistry = components;
+}
+
 // Export API
 export { components as registry, getRegistry, loadAll };
 export default { registry: components, getRegistry, loadAll };
