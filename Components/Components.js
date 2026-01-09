@@ -1,4 +1,4 @@
-// Components aggregator: map each component to its highest-version entry
+// Components.js - 改为全局脚本
 const components = {
   ButtonGroup: "./ButtonGroup/V1/ButtonGroup.js",
   DownloadAttachs: "./DownloadAttachs/V1/DownloadAttachs.js",
@@ -12,52 +12,47 @@ async function loadAll(options = {}) {
   const results = {};
   for (const [name, path] of Object.entries(components)) {
     try {
-      // Try ESM dynamic import first
-      const mod = await import(path);
-      // prefer default export, then module namespace
-      results[name] = mod.default ?? mod;
-    } catch (err) {
-      // Fallback: if scripts define globals, try to read from window
-      try {
-        if (typeof window !== "undefined" && window[name]) {
-          results[name] = window[name];
-        } else {
-          results[name] = null;
-          console.warn(`Component ${name} failed to load from ${path}:`, err);
-        }
-      } catch (e) {
+      // 直接加载脚本文件（非模块）
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = path;
+        script.onload = () => resolve(script);
+        script.onerror = () => reject(new Error(`Failed to load ${path}`));
+        document.head.appendChild(script);
+      });
+
+      // 从全局对象读取
+      if (typeof window !== "undefined" && window[name]) {
+        results[name] = window[name];
+      } else {
+        console.warn(`Component ${name} not found in global scope`);
         results[name] = null;
-        console.warn(`Component ${name} load fallback failed:`, e);
       }
+    } catch (err) {
+      console.warn(`Component ${name} failed to load from ${path}:`, err);
+      results[name] = null;
     }
   }
 
-  // attach to window for easy global access in browser
-  try {
-    if (typeof window !== "undefined") {
-      window.Components = window.Components || {};
-      Object.assign(window.Components, results);
-    }
-  } catch (e) {
-    // ignore in non-browser environments
+  // 挂载到全局
+  if (typeof window !== "undefined") {
+    window.Components = results;
   }
 
   return results;
 }
 
-// Convenience: synchronous access to configured paths
 function getRegistry() {
   return { ...components };
 }
 
-// 确保全局可用（针对非模块环境）
-if (typeof window !== "undefined") {
-  // 将主要函数挂载到window
-  window.loadAll = loadAll;
-  window.getRegistry = getRegistry;
-  window.ComponentsRegistry = components;
-}
+// 直接挂载到全局
+window.Components = {};
+window.loadAll = loadAll;
+window.getRegistry = getRegistry;
+window.ComponentsRegistry = components;
 
-// Export API
-export { components as registry, getRegistry, loadAll };
-export default { registry: components, getRegistry, loadAll };
+// 可选：自动执行加载
+loadAll().then((components) => {
+  console.log("所有组件已加载", components);
+});
