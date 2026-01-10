@@ -2,14 +2,14 @@
 (function () {
   // 组件路径数组
   var components = [
-    "./TreeExpandPanel/V1/TreeExpandPanel.js",
-    "./TimeShaft/V1/TimeShaft.js",
-    "./Message/V1/Message.js",
-    "./Message/V2/Message.js",
-    "./Loading/V1/FishingAnimation.js",
-    "./Loading/V2/Loading.js",
-    "./DownloadAttachs/V1/DownloadAttachs.js",
-    "./ButtonGroup/V1/ButtonGroup.js",
+    "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/TreeExpandPanel/V1/TreeExpandPanel.js",
+    "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/TimeShaft/V1/TimeShaft.js",
+    "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V1/Message.js",
+    "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V2/Message.js",
+    "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Loading/V1/FishingAnimation.js",
+    "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Loading/V2/Loading.js",
+    "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/DownloadAttachs/V1/DownloadAttachs.js",
+    "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/ButtonGroup/V1/ButtonGroup.js",
   ];
 
   // 动态加载所有组件
@@ -27,8 +27,8 @@
       clearInterval(checkInterval);
 
       // 创建统一命名空间
-      window.NGCOMPONENTSDUFU = window.NGCOMPONENTSDUFU || {};
-      window.NGCOMPONENTSDUFU.Components = {
+      window.NGDUFU = window.NGDUFU || {};
+      window.NGDUFU.Components = {
         TreeExpandPanel: window.TreeExpandPanel,
         TimeShaft: window.TimeShaft,
         MessageV1: window.MessageV1,
