@@ -5275,7 +5275,7 @@ function removeAllFishingAnimations() {
     }
   });
 }
-export { createFishingAnimation, removeAllFishingAnimations };
+
 //使用示例
 // const fishingAnimation = createFishingAnimation("#app", "加载中");
 
@@ -5283,6 +5283,9 @@ export { createFishingAnimation, removeAllFishingAnimations };
 // setTimeout(() => {
 //   fishingAnimation.remove();
 // }, 5000);
+
+if (typeof createFishingAnimation !== 'undefined') module.exports['createFishingAnimation'] = createFishingAnimation;
+if (typeof removeAllFishingAnimations !== 'undefined') module.exports['removeAllFishingAnimations'] = removeAllFishingAnimations;
 
 };
 __modules["./Loading/V2/Loading.js"] = function(module, exports, require){
@@ -5468,7 +5471,7 @@ function createLoading(selector, text = "正在加载中") {
     },
   };
 }
-export { createLoading };
+
 //使用示例
 // const loading = createLoading('#app', '数据加载中...');
 // // 更新文字
@@ -5482,6 +5485,8 @@ export { createLoading };
 // // 移除动画
 // loading.remove();
 // 注意：确保在项目中只引入一次此文件以避免重复定义动画关键帧
+
+if (typeof createLoading !== 'undefined') module.exports['createLoading'] = createLoading;
 
 };
 __modules["./Message/V1/Message.js"] = function(module, exports, require){

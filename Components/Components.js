@@ -66,6 +66,8 @@ function generateBundle(map, outFile) {
   for (const [k, id] of Object.entries(map)) {
     const abs = path.join(rootDir, id.replace(/^\.\//, ""));
     let content = fs.readFileSync(abs, "utf8");
+    // transform simple ESM -> CommonJS so terser can parse bundled code
+    content = transformESMtoCommonJS(content);
     out +=
       "__modules[" +
       JSON.stringify(id) +
@@ -93,6 +95,53 @@ function generateBundle(map, outFile) {
   out += "\n})();\n";
 
   fs.writeFileSync(outFile, out, "utf8");
+}
+
+function transformESMtoCommonJS(code) {
+  let out = code;
+
+  // import default: import X from 'mod'; -> const X = require('mod');
+  out = out.replace(/^\s*import\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/mg, "const $1 = require('$2');");
+
+  // import named: import {a, b as c} from 'mod'; -> const {a, b: c} = require('mod');
+  out = out.replace(/^\s*import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"];?/mg, function(m, names, mod){
+    const mapped = names.split(',').map(s=>s.trim()).map(s=>s.replace(/\s+as\s+/,' : ')).join(', ');
+    return `const {${mapped}} = require('${mod}');`;
+  });
+
+  // import * as X from 'mod';
+  out = out.replace(/^\s*import\s+\*\s+as\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/mg, "const $1 = require('$2');");
+
+  // bare import -> require
+  out = out.replace(/^\s*import\s+['"]([^'"]+)['"];?/mg, "require('$1');");
+
+  // export default -> module.exports =
+  out = out.replace(/\bexport\s+default\s+/g, 'module.exports = ');
+
+  // capture named exports for functions/classes/variables
+  const names = [];
+  out = out.replace(/^\s*export\s+function\s+([A-Za-z0-9_$]+)/mg, function(m, name){ names.push(name); return `function ${name}`; });
+  out = out.replace(/^\s*export\s+class\s+([A-Za-z0-9_$]+)/mg, function(m, name){ names.push(name); return `class ${name}`; });
+  out = out.replace(/^\s*export\s+(?:const|let|var)\s+([A-Za-z0-9_$]+)/mg, function(m, name){ names.push(name); return m.replace(/^\s*export\s+/, ''); });
+
+  // export { a, b as c }
+  out = out.replace(/export\s*\{([^}]+)\};?/g, function(m, list){
+    const parts = list.split(',').map(s=>s.trim());
+    parts.forEach(p=>{
+      const m2 = p.match(/^([A-Za-z0-9_$]+)\s+as\s+([A-Za-z0-9_$]+)/);
+      if (m2) names.push(m2[2]); else names.push(p);
+    });
+    return '';
+  });
+
+  if (names.length) {
+    out += '\n';
+    for (const n of names) {
+      out += `if (typeof ${n} !== 'undefined') module.exports['${n}'] = ${n};\n`;
+    }
+  }
+
+  return out;
 }
 
 function simpleMinify(code) {
