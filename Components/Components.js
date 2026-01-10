@@ -49,6 +49,7 @@
         var event = document.createEvent("Event");
         event.initEvent("NGComponentsLoaded", true, true);
         window.dispatchEvent(event);
+        console.log("NGComponentsLoaded event dispatched.");
       }
     }
   }, 100);
