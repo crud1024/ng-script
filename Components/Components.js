@@ -21,7 +21,12 @@ function walk(dir) {
     } else if (stat.isFile() && it.endsWith(".js")) {
       const base = path.basename(full);
       if (full === __filename) continue;
-      if (base === "Components.all.js" || base === "Components.all.min.js")
+      if (
+        base === "Components.all.js" ||
+        base === "Components.all.min.js" ||
+        base === "Components.osd.all.min.js" ||
+        base === "Components.osd.all.new.min.js"
+      )
         continue;
       res.push(full);
     }
@@ -101,41 +106,73 @@ function transformESMtoCommonJS(code) {
   let out = code;
 
   // import default: import X from 'mod'; -> const X = require('mod');
-  out = out.replace(/^\s*import\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/mg, "const $1 = require('$2');");
+  out = out.replace(
+    /^\s*import\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/gm,
+    "const $1 = require('$2');"
+  );
 
   // import named: import {a, b as c} from 'mod'; -> const {a, b: c} = require('mod');
-  out = out.replace(/^\s*import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"];?/mg, function(m, names, mod){
-    const mapped = names.split(',').map(s=>s.trim()).map(s=>s.replace(/\s+as\s+/,' : ')).join(', ');
-    return `const {${mapped}} = require('${mod}');`;
-  });
+  out = out.replace(
+    /^\s*import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"];?/gm,
+    function (m, names, mod) {
+      const mapped = names
+        .split(",")
+        .map((s) => s.trim())
+        .map((s) => s.replace(/\s+as\s+/, " : "))
+        .join(", ");
+      return `const {${mapped}} = require('${mod}');`;
+    }
+  );
 
   // import * as X from 'mod';
-  out = out.replace(/^\s*import\s+\*\s+as\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/mg, "const $1 = require('$2');");
+  out = out.replace(
+    /^\s*import\s+\*\s+as\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/gm,
+    "const $1 = require('$2');"
+  );
 
   // bare import -> require
-  out = out.replace(/^\s*import\s+['"]([^'"]+)['"];?/mg, "require('$1');");
+  out = out.replace(/^\s*import\s+['"]([^'"]+)['"];?/gm, "require('$1');");
 
   // export default -> module.exports =
-  out = out.replace(/\bexport\s+default\s+/g, 'module.exports = ');
+  out = out.replace(/\bexport\s+default\s+/g, "module.exports = ");
 
   // capture named exports for functions/classes/variables
   const names = [];
-  out = out.replace(/^\s*export\s+function\s+([A-Za-z0-9_$]+)/mg, function(m, name){ names.push(name); return `function ${name}`; });
-  out = out.replace(/^\s*export\s+class\s+([A-Za-z0-9_$]+)/mg, function(m, name){ names.push(name); return `class ${name}`; });
-  out = out.replace(/^\s*export\s+(?:const|let|var)\s+([A-Za-z0-9_$]+)/mg, function(m, name){ names.push(name); return m.replace(/^\s*export\s+/, ''); });
+  out = out.replace(
+    /^\s*export\s+function\s+([A-Za-z0-9_$]+)/gm,
+    function (m, name) {
+      names.push(name);
+      return `function ${name}`;
+    }
+  );
+  out = out.replace(
+    /^\s*export\s+class\s+([A-Za-z0-9_$]+)/gm,
+    function (m, name) {
+      names.push(name);
+      return `class ${name}`;
+    }
+  );
+  out = out.replace(
+    /^\s*export\s+(?:const|let|var)\s+([A-Za-z0-9_$]+)/gm,
+    function (m, name) {
+      names.push(name);
+      return m.replace(/^\s*export\s+/, "");
+    }
+  );
 
   // export { a, b as c }
-  out = out.replace(/export\s*\{([^}]+)\};?/g, function(m, list){
-    const parts = list.split(',').map(s=>s.trim());
-    parts.forEach(p=>{
+  out = out.replace(/export\s*\{([^}]+)\};?/g, function (m, list) {
+    const parts = list.split(",").map((s) => s.trim());
+    parts.forEach((p) => {
       const m2 = p.match(/^([A-Za-z0-9_$]+)\s+as\s+([A-Za-z0-9_$]+)/);
-      if (m2) names.push(m2[2]); else names.push(p);
+      if (m2) names.push(m2[2]);
+      else names.push(p);
     });
-    return '';
+    return "";
   });
 
   if (names.length) {
-    out += '\n';
+    out += "\n";
     for (const n of names) {
       out += `if (typeof ${n} !== 'undefined') module.exports['${n}'] = ${n};\n`;
     }
@@ -145,7 +182,7 @@ function transformESMtoCommonJS(code) {
 }
 
 function simpleMinify(code) {
-  let out = '';
+  let out = "";
   let i = 0;
   const len = code.length;
   let inSingle = false;
@@ -153,12 +190,12 @@ function simpleMinify(code) {
   let inTemplate = false;
   let inLineComment = false;
   let inBlockComment = false;
-  let prev = '';
+  let prev = "";
   while (i < len) {
     const ch = code[i];
-    const next = i + 1 < len ? code[i + 1] : '';
+    const next = i + 1 < len ? code[i + 1] : "";
     if (inLineComment) {
-      if (ch === '\n') {
+      if (ch === "\n") {
         inLineComment = false;
         out += ch;
       }
@@ -167,10 +204,10 @@ function simpleMinify(code) {
       continue;
     }
     if (inBlockComment) {
-      if (ch === '*' && next === '/') {
+      if (ch === "*" && next === "/") {
         inBlockComment = false;
         i += 2;
-        prev = '/';
+        prev = "/";
         continue;
       }
       i++;
@@ -179,37 +216,37 @@ function simpleMinify(code) {
     }
     if (inSingle) {
       out += ch;
-      if (ch === "'" && prev !== '\\') inSingle = false;
+      if (ch === "'" && prev !== "\\") inSingle = false;
       prev = ch;
       i++;
       continue;
     }
     if (inDouble) {
       out += ch;
-      if (ch === '"' && prev !== '\\') inDouble = false;
+      if (ch === '"' && prev !== "\\") inDouble = false;
       prev = ch;
       i++;
       continue;
     }
     if (inTemplate) {
       out += ch;
-      if (ch === '`' && prev !== '\\') inTemplate = false;
+      if (ch === "`" && prev !== "\\") inTemplate = false;
       prev = ch;
       i++;
       continue;
     }
 
     // not in any string/comment
-    if (ch === '/' && next === '/') {
+    if (ch === "/" && next === "/") {
       inLineComment = true;
       i += 2;
-      prev = '/';
+      prev = "/";
       continue;
     }
-    if (ch === '/' && next === '*') {
+    if (ch === "/" && next === "*") {
       inBlockComment = true;
       i += 2;
-      prev = '/';
+      prev = "/";
       continue;
     }
     if (ch === "'") {
@@ -226,7 +263,7 @@ function simpleMinify(code) {
       i++;
       continue;
     }
-    if (ch === '`') {
+    if (ch === "`") {
       inTemplate = true;
       out += ch;
       prev = ch;
@@ -237,18 +274,18 @@ function simpleMinify(code) {
     // collapse multiple whitespace into single space
     if (/\s/.test(ch)) {
       // preserve single newline
-      if (ch === '\n') {
-        out += '\n';
+      if (ch === "\n") {
+        out += "\n";
         prev = ch;
         i++;
         continue;
       }
       // for other whitespace, add single space if previous not whitespace
-      const last = out.length ? out[out.length - 1] : '';
+      const last = out.length ? out[out.length - 1] : "";
       if (last && /\s/.test(last)) {
         // skip
       } else {
-        out += ' ';
+        out += " ";
       }
       prev = ch;
       i++;
@@ -261,7 +298,7 @@ function simpleMinify(code) {
   }
 
   // trim
-  return out.replace(/^[ \t\n]+|[ \t\n]+$/g, '');
+  return out.replace(/^[ \t\n]+|[ \t\n]+$/g, "");
 }
 
 const map = buildMap();
@@ -272,13 +309,13 @@ if (require.main === module) {
   generateBundle(map, outFile);
   // also write a simple-minified version
   try {
-    const raw = fs.readFileSync(outFile, 'utf8');
+    const raw = fs.readFileSync(outFile, "utf8");
     const mini = simpleMinify(raw);
-    const minOut = path.join(rootDir, 'Components.all.min.js');
-    fs.writeFileSync(minOut, mini, 'utf8');
-    console.log('Minified bundle written to', minOut);
+    const minOut = path.join(rootDir, "Components.all.min.js");
+    fs.writeFileSync(minOut, mini, "utf8");
+    console.log("Minified bundle written to", minOut);
   } catch (e) {
-    console.error('Minify failed:', e && e.message);
+    console.error("Minify failed:", e && e.message);
   }
   console.log("Bundle written to", outFile);
   process.exit(0);
