@@ -1,281 +1,248 @@
-// Components.js - 动态加载其他组件的加载器
-(function () {
-  "use strict";
+// Components aggregator + bundle generator
+// Usage:
+//   As a module: const comps = require('./Components'); comps.list(); comps.requireByKey('Message/V1/Message')
+//   As a script: node Components.js   -> creates Components.all.js in same folder (browser-friendly bundle)
 
-  // 立即创建命名空间
-  window.NGDUFU = window.NGDUFU || {};
-  window.NGDUFU.Components = window.NGDUFU.Components || {};
-  window.NGDUFU.ComponentsReady = window.NGDUFU.ComponentsReady || {
-    isReady: false,
-    callbacks: [],
+const fs = require("fs");
+const path = require("path");
 
-    // 等待就绪
-    ready: function (callback) {
-      if (this.isReady) {
-        callback(window.NGDUFU.Components);
-      } else {
-        this.callbacks.push(callback);
+const rootDir = __dirname;
+const SELF = path.basename(__filename);
+
+function walk(dir) {
+  const res = [];
+  const items = fs.readdirSync(dir);
+  for (const it of items) {
+    if (it.startsWith(".")) continue;
+    const full = path.join(dir, it);
+    const stat = fs.statSync(full);
+    if (stat.isDirectory()) {
+      res.push(...walk(full));
+    } else if (stat.isFile() && it.endsWith(".js")) {
+      const base = path.basename(full);
+      if (full === __filename) continue;
+      if (base === "Components.all.js" || base === "Components.all.min.js")
+        continue;
+      res.push(full);
+    }
+  }
+  return res;
+}
+
+function makeId(from, filePath) {
+  let rel = path.relative(from, filePath).replace(/\\/g, "/");
+  if (!rel.startsWith("./") && !rel.startsWith("../")) rel = "./" + rel;
+  return rel;
+}
+
+function buildMap() {
+  const files = walk(rootDir);
+  const map = {};
+  for (const f of files) {
+    const id = makeId(rootDir, f);
+    // key without leading './' and without .js
+    const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
+    map[key] = id;
+  }
+  return map;
+}
+
+function lazyExports(map) {
+  const exportsObj = {};
+  Object.keys(map).forEach((k) => {
+    Object.defineProperty(exportsObj, k, {
+      enumerable: true,
+      configurable: false,
+      get() {
+        return require(path.join(rootDir, map[k]));
+      },
+    });
+  });
+  return exportsObj;
+}
+
+function generateBundle(map, outFile) {
+  let out = '(function(){\n"use strict";\nvar __modules = {};\n';
+  for (const [k, id] of Object.entries(map)) {
+    const abs = path.join(rootDir, id.replace(/^\.\//, ""));
+    let content = fs.readFileSync(abs, "utf8");
+    out +=
+      "__modules[" +
+      JSON.stringify(id) +
+      "] = function(module, exports, require){\n" +
+      content +
+      "\n};\n";
+  }
+
+  out +=
+    "\nvar __cache = {};\nfunction __require(id){ if(__cache[id]) return __cache[id].exports; var module = {exports:{}}; __cache[id]=module; __modules[id](module, module.exports, __require); return module.exports; }\n";
+
+  out +=
+    'var G = (typeof window!=="undefined"?window:(typeof globalThis!=="undefined"?globalThis:global));\nG.NG = G.NG || {}; G.NG.Components = G.NG.Components || {};\n';
+
+  for (const id of Object.values(map)) {
+    const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
+    out +=
+      "G.NG.Components[" +
+      JSON.stringify(key) +
+      "] = __require(" +
+      JSON.stringify(id) +
+      ");\n";
+  }
+
+  out += "\n})();\n";
+
+  fs.writeFileSync(outFile, out, "utf8");
+}
+
+function simpleMinify(code) {
+  let out = '';
+  let i = 0;
+  const len = code.length;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let prev = '';
+  while (i < len) {
+    const ch = code[i];
+    const next = i + 1 < len ? code[i + 1] : '';
+    if (inLineComment) {
+      if (ch === '\n') {
+        inLineComment = false;
+        out += ch;
       }
-    },
+      i++;
+      prev = ch;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false;
+        i += 2;
+        prev = '/';
+        continue;
+      }
+      i++;
+      prev = ch;
+      continue;
+    }
+    if (inSingle) {
+      out += ch;
+      if (ch === "'" && prev !== '\\') inSingle = false;
+      prev = ch;
+      i++;
+      continue;
+    }
+    if (inDouble) {
+      out += ch;
+      if (ch === '"' && prev !== '\\') inDouble = false;
+      prev = ch;
+      i++;
+      continue;
+    }
+    if (inTemplate) {
+      out += ch;
+      if (ch === '`' && prev !== '\\') inTemplate = false;
+      prev = ch;
+      i++;
+      continue;
+    }
 
-    // 设置就绪状态
-    setReady: function () {
-      this.isReady = true;
-      var callbacks = this.callbacks.slice();
-      this.callbacks = [];
+    // not in any string/comment
+    if (ch === '/' && next === '/') {
+      inLineComment = true;
+      i += 2;
+      prev = '/';
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      inBlockComment = true;
+      i += 2;
+      prev = '/';
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      out += ch;
+      prev = ch;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      out += ch;
+      prev = ch;
+      i++;
+      continue;
+    }
+    if (ch === '`') {
+      inTemplate = true;
+      out += ch;
+      prev = ch;
+      i++;
+      continue;
+    }
 
-      setTimeout(function () {
-        callbacks.forEach(function (callback) {
-          try {
-            callback(window.NGDUFU.Components);
-          } catch (e) {
-            console.error("回调执行失败:", e);
-          }
-        });
-      }, 0);
-    },
+    // collapse multiple whitespace into single space
+    if (/\s/.test(ch)) {
+      // preserve single newline
+      if (ch === '\n') {
+        out += '\n';
+        prev = ch;
+        i++;
+        continue;
+      }
+      // for other whitespace, add single space if previous not whitespace
+      const last = out.length ? out[out.length - 1] : '';
+      if (last && /\s/.test(last)) {
+        // skip
+      } else {
+        out += ' ';
+      }
+      prev = ch;
+      i++;
+      continue;
+    }
 
-    // 获取状态
-    getStatus: function () {
-      return {
-        isReady: this.isReady,
-        pendingCallbacks: this.callbacks.length,
-      };
+    out += ch;
+    prev = ch;
+    i++;
+  }
+
+  // trim
+  return out.replace(/^[ \t\n]+|[ \t\n]+$/g, '');
+}
+
+const map = buildMap();
+
+if (require.main === module) {
+  // CLI: generate bundle file
+  const outFile = path.join(rootDir, "Components.all.js");
+  generateBundle(map, outFile);
+  // also write a simple-minified version
+  try {
+    const raw = fs.readFileSync(outFile, 'utf8');
+    const mini = simpleMinify(raw);
+    const minOut = path.join(rootDir, 'Components.all.min.js');
+    fs.writeFileSync(minOut, mini, 'utf8');
+    console.log('Minified bundle written to', minOut);
+  } catch (e) {
+    console.error('Minify failed:', e && e.message);
+  }
+  console.log("Bundle written to", outFile);
+  process.exit(0);
+} else {
+  // As module: export lazy require map
+  module.exports = {
+    list: () => Object.keys(map),
+    map: map,
+    components: lazyExports(map),
+    requireByKey: (key) => {
+      const id = map[key];
+      if (!id) throw new Error("Component not found: " + key);
+      return require(path.join(rootDir, id));
     },
   };
-
-  console.log("NGDUFU命名空间已创建");
-
-  // 组件路径数组
-  var components = [
-    {
-      name: "TreeExpandPanel",
-      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/TreeExpandPanel/V1/TreeExpandPanel.js",
-      globalVar: "TreeExpandPanel",
-      loaded: false,
-    },
-    {
-      name: "TimeShaft",
-      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/TimeShaft/V1/TimeShaft.js",
-      globalVar: "TimeShaft",
-      loaded: false,
-    },
-    {
-      name: "MessageV1",
-      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V1/Message.js",
-      globalVar: "MessageV1",
-      loaded: false,
-    },
-    {
-      name: "MessageV2",
-      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V2/Message.js",
-      globalVar: "MessageV2",
-      loaded: false,
-    },
-    {
-      name: "FishingAnimation",
-      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Loading/V1/FishingAnimation.js",
-      globalVar: "FishingAnimation",
-      loaded: false,
-    },
-    {
-      name: "Loading",
-      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Loading/V2/Loading.js",
-      globalVar: "Loading",
-      loaded: false,
-    },
-    {
-      name: "DownloadAttachs",
-      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/DownloadAttachs/V1/DownloadAttachs.js",
-      globalVar: "DownloadAttachs",
-      loaded: false,
-    },
-    {
-      name: "ButtonGroup",
-      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/ButtonGroup/V1/ButtonGroup.js",
-      globalVar: "ButtonGroup",
-      loaded: false,
-    },
-  ];
-
-  var loadedCount = 0;
-  var totalComponents = components.length;
-  var initialized = false;
-
-  // 加载单个组件
-  function loadComponent(component) {
-    return new Promise(function (resolve, reject) {
-      var script = document.createElement("script");
-      script.src = component.url;
-      script.async = false;
-
-      // 设置加载超时
-      var timeoutId = setTimeout(function () {
-        console.warn("组件加载超时:", component.name);
-        component.loaded = true;
-        loadedCount++;
-        resolve(component);
-      }, 10000);
-
-      script.onload = function () {
-        clearTimeout(timeoutId);
-        console.log("组件加载成功:", component.name);
-        component.loaded = true;
-        loadedCount++;
-        resolve(component);
-      };
-
-      script.onerror = function () {
-        clearTimeout(timeoutId);
-        console.error("组件加载失败:", component.name);
-        component.loaded = true;
-        component.error = true;
-        loadedCount++;
-        resolve(component); // 即使失败也resolve，不中断其他组件加载
-      };
-
-      document.head.appendChild(script);
-    });
-  }
-
-  // 检查组件全局变量
-  function checkComponent(component) {
-    var globalVarName = component.globalVar;
-    if (window[globalVarName] !== undefined) {
-      return window[globalVarName];
-    }
-    return null;
-  }
-
-  // 初始化组件到命名空间
-  function initializeComponents() {
-    if (initialized) return;
-
-    console.log("开始初始化组件到命名空间...");
-
-    components.forEach(function (component) {
-      var compInstance = checkComponent(component);
-      if (compInstance) {
-        // 将组件添加到命名空间
-        if (typeof compInstance === "function") {
-          window.NGDUFU.Components[component.name] = compInstance;
-        } else {
-          // 如果组件不是函数，则将其包装为返回自身的函数
-          window.NGDUFU.Components[component.name] = function () {
-            return compInstance;
-          };
-        }
-        console.log("✓ 组件已注册:", component.name);
-      } else {
-        // 创建占位函数，避免调用时报错
-        window.NGDUFU.Components[component.name] = function () {
-          console.error("组件未加载成功:", component.name);
-          throw new Error("组件未加载成功: " + component.name);
-        };
-        console.warn("⚠ 组件未找到:", component.name);
-      }
-    });
-
-    // 添加一些工具方法
-    window.NGDUFU.Components.initAll = function () {
-      console.log("初始化所有组件");
-      // 可以在这里添加初始化逻辑
-    };
-
-    // 标记为已初始化
-    initialized = true;
-    window.NGDUFU.ComponentsReady.isReady = true;
-
-    // 触发回调
-    window.NGDUFU.ComponentsReady.setReady();
-
-    // 触发自定义事件
-    triggerReadyEvent();
-
-    console.log(
-      "🎉 NGDUFU组件全部加载完成，共加载 " +
-        loadedCount +
-        "/" +
-        totalComponents +
-        " 个组件"
-    );
-  }
-
-  // 触发就绪事件
-  function triggerReadyEvent() {
-    var event;
-    try {
-      if (typeof Event === "function") {
-        event = new Event("NGComponentsLoaded");
-      } else if (typeof document.createEvent === "function") {
-        event = document.createEvent("Event");
-        event.initEvent("NGComponentsLoaded", true, true);
-      }
-
-      if (event) {
-        window.dispatchEvent(event);
-        console.log("已触发 NGComponentsLoaded 事件");
-      }
-    } catch (e) {
-      console.error("触发事件失败:", e);
-    }
-  }
-
-  // 主加载函数
-  function loadAllComponents() {
-    console.log("开始加载所有组件，共 " + totalComponents + " 个");
-
-    // 使用Promise.all加载所有组件
-    var promises = components.map(function (component) {
-      return loadComponent(component);
-    });
-
-    Promise.all(promises)
-      .then(function (results) {
-        console.log("所有组件脚本加载完成，等待全局变量初始化...");
-
-        // 给组件一点时间设置全局变量
-        setTimeout(function () {
-          initializeComponents();
-        }, 300);
-      })
-      .catch(function (error) {
-        console.error("组件加载过程中出现错误:", error);
-        // 即使出错也尝试初始化
-        setTimeout(function () {
-          initializeComponents();
-        }, 300);
-      });
-  }
-
-  // 检查是否有组件已经存在（缓存）
-  function checkExistingComponents() {
-    var foundCount = 0;
-    components.forEach(function (component) {
-      if (checkComponent(component)) {
-        foundCount++;
-        component.loaded = true;
-        loadedCount++;
-        console.log("从缓存中找到组件:", component.name);
-      }
-    });
-
-    return foundCount;
-  }
-
-  // 主入口函数
-  function init() {
-    // 检查是否已经有组件加载了
-    var found = checkExistingComponents();
-
-    if (found === totalComponents) {
-      console.log("所有组件已从缓存加载");
-      initializeComponents();
-    } else {
-      loadAllComponents();
-    }
-  }
-
-  // 立即开始加载
-  init();
-})();
+}
