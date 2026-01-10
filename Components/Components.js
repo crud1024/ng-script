@@ -2,271 +2,280 @@
 (function () {
   "use strict";
 
-  // 配置对象
-  var config = {
-    // 组件配置
-    components: [
-      {
-        name: "TreeExpandPanel",
-        path: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/TreeExpandPanel/V1/TreeExpandPanel.js",
-        globalVar: "TreeExpandPanel",
-      },
-      {
-        name: "TimeShaft",
-        path: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/TimeShaft/V1/TimeShaft.js",
-        globalVar: "TimeShaft",
-      },
-      {
-        name: "MessageV1",
-        path: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V1/Message.js",
-        globalVar: "MessageV1",
-      },
-      {
-        name: "MessageV2",
-        path: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V2/Message.js",
-        globalVar: "MessageV2",
-      },
-      {
-        name: "FishingAnimation",
-        path: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Loading/V1/FishingAnimation.js",
-        globalVar: "FishingAnimation",
-      },
-      {
-        name: "Loading",
-        path: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Loading/V2/Loading.js",
-        globalVar: "Loading",
-      },
-      {
-        name: "DownloadAttachs",
-        path: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/DownloadAttachs/V1/DownloadAttachs.js",
-        globalVar: "DownloadAttachs",
-      },
-      {
-        name: "ButtonGroup",
-        path: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/ButtonGroup/V1/ButtonGroup.js",
-        globalVar: "ButtonGroup",
-      },
-    ],
-
-    // 超时时间（毫秒）
-    timeout: 10000,
-
-    // 检查间隔（毫秒）
-    checkInterval: 100,
-  };
-
-  // 状态对象
-  var state = {
-    loaded: {},
-    loadingCount: 0,
-    totalCount: config.components.length,
-    isInitialized: false,
-    callbacks: [],
-  };
-
-  // 创建命名空间
+  // 立即创建命名空间
   window.NGDUFU = window.NGDUFU || {};
   window.NGDUFU.Components = window.NGDUFU.Components || {};
+  window.NGDUFU.ComponentsReady = window.NGDUFU.ComponentsReady || {
+    isReady: false,
+    callbacks: [],
 
-  // 添加状态检查方法
-  window.NGDUFU.ComponentsReady = {
-    // 检查是否准备就绪
-    isReady: function () {
-      return state.isInitialized;
-    },
-
-    // 等待组件加载完成
+    // 等待就绪
     ready: function (callback) {
-      if (state.isInitialized) {
+      if (this.isReady) {
         callback(window.NGDUFU.Components);
       } else {
-        state.callbacks.push(callback);
+        this.callbacks.push(callback);
       }
     },
 
-    // 获取加载状态
+    // 设置就绪状态
+    setReady: function () {
+      this.isReady = true;
+      var callbacks = this.callbacks.slice();
+      this.callbacks = [];
+
+      setTimeout(function () {
+        callbacks.forEach(function (callback) {
+          try {
+            callback(window.NGDUFU.Components);
+          } catch (e) {
+            console.error("回调执行失败:", e);
+          }
+        });
+      }, 0);
+    },
+
+    // 获取状态
     getStatus: function () {
       return {
-        loaded: state.loaded,
-        loadingCount: state.loadingCount,
-        totalCount: state.totalCount,
-        isInitialized: state.isInitialized,
+        isReady: this.isReady,
+        pendingCallbacks: this.callbacks.length,
       };
     },
   };
+
+  console.log("NGDUFU命名空间已创建");
+
+  // 组件路径数组
+  var components = [
+    {
+      name: "TreeExpandPanel",
+      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/TreeExpandPanel/V1/TreeExpandPanel.js",
+      globalVar: "TreeExpandPanel",
+      loaded: false,
+    },
+    {
+      name: "TimeShaft",
+      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/TimeShaft/V1/TimeShaft.js",
+      globalVar: "TimeShaft",
+      loaded: false,
+    },
+    {
+      name: "MessageV1",
+      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V1/Message.js",
+      globalVar: "MessageV1",
+      loaded: false,
+    },
+    {
+      name: "MessageV2",
+      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V2/Message.js",
+      globalVar: "MessageV2",
+      loaded: false,
+    },
+    {
+      name: "FishingAnimation",
+      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Loading/V1/FishingAnimation.js",
+      globalVar: "FishingAnimation",
+      loaded: false,
+    },
+    {
+      name: "Loading",
+      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Loading/V2/Loading.js",
+      globalVar: "Loading",
+      loaded: false,
+    },
+    {
+      name: "DownloadAttachs",
+      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/DownloadAttachs/V1/DownloadAttachs.js",
+      globalVar: "DownloadAttachs",
+      loaded: false,
+    },
+    {
+      name: "ButtonGroup",
+      url: "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/ButtonGroup/V1/ButtonGroup.js",
+      globalVar: "ButtonGroup",
+      loaded: false,
+    },
+  ];
+
+  var loadedCount = 0;
+  var totalComponents = components.length;
+  var initialized = false;
 
   // 加载单个组件
   function loadComponent(component) {
     return new Promise(function (resolve, reject) {
       var script = document.createElement("script");
-      script.src = component.path;
+      script.src = component.url;
       script.async = false;
 
-      // 设置超时
+      // 设置加载超时
       var timeoutId = setTimeout(function () {
-        reject(new Error("组件加载超时: " + component.name));
-      }, config.timeout);
+        console.warn("组件加载超时:", component.name);
+        component.loaded = true;
+        loadedCount++;
+        resolve(component);
+      }, 10000);
 
       script.onload = function () {
         clearTimeout(timeoutId);
         console.log("组件加载成功:", component.name);
-        state.loaded[component.name] = {
-          success: true,
-          globalVar: component.globalVar,
-          path: component.path,
-        };
+        component.loaded = true;
+        loadedCount++;
         resolve(component);
       };
 
       script.onerror = function () {
         clearTimeout(timeoutId);
         console.error("组件加载失败:", component.name);
-        state.loaded[component.name] = {
-          success: false,
-          globalVar: component.globalVar,
-          path: component.path,
-          error: "加载失败",
-        };
-        resolve(component); // 即使失败也resolve，继续其他组件
+        component.loaded = true;
+        component.error = true;
+        loadedCount++;
+        resolve(component); // 即使失败也resolve，不中断其他组件加载
       };
 
       document.head.appendChild(script);
     });
   }
 
-  // 检查组件全局变量是否存在
-  function checkComponentGlobalVar(component) {
+  // 检查组件全局变量
+  function checkComponent(component) {
     var globalVarName = component.globalVar;
-    if (window[globalVarName]) {
+    if (window[globalVarName] !== undefined) {
       return window[globalVarName];
     }
     return null;
   }
 
-  // 初始化命名空间
-  function initializeNamespace() {
-    if (state.isInitialized) return;
+  // 初始化组件到命名空间
+  function initializeComponents() {
+    if (initialized) return;
 
-    // 将所有找到的组件添加到命名空间
-    config.components.forEach(function (component) {
-      var componentInstance = checkComponentGlobalVar(component);
-      if (componentInstance) {
-        window.NGDUFU.Components[component.name] = componentInstance;
-        console.log("组件注册成功:", component.name);
+    console.log("开始初始化组件到命名空间...");
+
+    components.forEach(function (component) {
+      var compInstance = checkComponent(component);
+      if (compInstance) {
+        // 将组件添加到命名空间
+        if (typeof compInstance === "function") {
+          window.NGDUFU.Components[component.name] = compInstance;
+        } else {
+          // 如果组件不是函数，则将其包装为返回自身的函数
+          window.NGDUFU.Components[component.name] = function () {
+            return compInstance;
+          };
+        }
+        console.log("✓ 组件已注册:", component.name);
       } else {
-        console.warn("组件未找到全局变量:", component.globalVar);
-        // 创建一个占位函数，避免调用时出错
+        // 创建占位函数，避免调用时报错
         window.NGDUFU.Components[component.name] = function () {
+          console.error("组件未加载成功:", component.name);
           throw new Error("组件未加载成功: " + component.name);
         };
+        console.warn("⚠ 组件未找到:", component.name);
       }
     });
 
-    // 添加便捷方法
+    // 添加一些工具方法
     window.NGDUFU.Components.initAll = function () {
       console.log("初始化所有组件");
-      // 这里可以添加初始化逻辑
+      // 可以在这里添加初始化逻辑
     };
 
     // 标记为已初始化
-    state.isInitialized = true;
+    initialized = true;
+    window.NGDUFU.ComponentsReady.isReady = true;
 
-    // 执行所有等待的回调
-    state.callbacks.forEach(function (callback) {
-      try {
-        callback(window.NGDUFU.Components);
-      } catch (e) {
-        console.error("回调执行失败:", e);
-      }
-    });
-    state.callbacks = [];
+    // 触发回调
+    window.NGDUFU.ComponentsReady.setReady();
 
-    // 触发加载完成事件
-    triggerLoadedEvent();
+    // 触发自定义事件
+    triggerReadyEvent();
 
-    console.log("NGDUFU 组件加载器初始化完成");
+    console.log(
+      "🎉 NGDUFU组件全部加载完成，共加载 " +
+        loadedCount +
+        "/" +
+        totalComponents +
+        " 个组件"
+    );
   }
 
-  // 触发加载完成事件
-  function triggerLoadedEvent() {
+  // 触发就绪事件
+  function triggerReadyEvent() {
     var event;
-    if (typeof Event === "function") {
-      event = new Event("NGComponentsLoaded");
-    } else if (typeof document.createEvent === "function") {
-      event = document.createEvent("Event");
-      event.initEvent("NGComponentsLoaded", true, true);
-    }
+    try {
+      if (typeof Event === "function") {
+        event = new Event("NGComponentsLoaded");
+      } else if (typeof document.createEvent === "function") {
+        event = document.createEvent("Event");
+        event.initEvent("NGComponentsLoaded", true, true);
+      }
 
-    if (event) {
-      window.dispatchEvent(event);
-      console.log("已触发 NGComponentsLoaded 事件");
+      if (event) {
+        window.dispatchEvent(event);
+        console.log("已触发 NGComponentsLoaded 事件");
+      }
+    } catch (e) {
+      console.error("触发事件失败:", e);
     }
   }
 
-  // 开始加载所有组件
+  // 主加载函数
   function loadAllComponents() {
-    console.log("开始加载组件，共" + config.components.length + "个");
+    console.log("开始加载所有组件，共 " + totalComponents + " 个");
 
-    // 使用 Promise.all 等待所有组件加载完成
-    var promises = config.components.map(function (component) {
+    // 使用Promise.all加载所有组件
+    var promises = components.map(function (component) {
       return loadComponent(component);
     });
 
     Promise.all(promises)
-      .then(function () {
-        console.log("所有组件脚本加载完成");
-        // 等待一段时间确保全局变量已设置
+      .then(function (results) {
+        console.log("所有组件脚本加载完成，等待全局变量初始化...");
+
+        // 给组件一点时间设置全局变量
         setTimeout(function () {
-          initializeNamespace();
+          initializeComponents();
         }, 300);
       })
       .catch(function (error) {
-        console.error("组件加载过程中出错:", error);
+        console.error("组件加载过程中出现错误:", error);
         // 即使出错也尝试初始化
         setTimeout(function () {
-          initializeNamespace();
+          initializeComponents();
         }, 300);
       });
   }
 
-  // 检查是否已经有组件被加载（例如页面缓存）
+  // 检查是否有组件已经存在（缓存）
   function checkExistingComponents() {
     var foundCount = 0;
-    config.components.forEach(function (component) {
-      if (checkComponentGlobalVar(component)) {
+    components.forEach(function (component) {
+      if (checkComponent(component)) {
         foundCount++;
-        state.loaded[component.name] = {
-          success: true,
-          globalVar: component.globalVar,
-          path: component.path,
-          fromCache: true,
-        };
+        component.loaded = true;
+        loadedCount++;
+        console.log("从缓存中找到组件:", component.name);
       }
     });
 
-    if (foundCount === config.components.length) {
-      console.log("检测到所有组件已从缓存加载");
-      initializeNamespace();
-      return true;
-    }
-
-    return false;
+    return foundCount;
   }
 
-  // 主初始化函数
+  // 主入口函数
   function init() {
-    // 首先检查是否已经有组件被加载
-    if (!checkExistingComponents()) {
-      // 开始加载组件
+    // 检查是否已经有组件加载了
+    var found = checkExistingComponents();
+
+    if (found === totalComponents) {
+      console.log("所有组件已从缓存加载");
+      initializeComponents();
+    } else {
       loadAllComponents();
     }
   }
 
-  // 在DOM准备好后开始加载
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    // DOM已经加载完成
-    init();
-  }
+  // 立即开始加载
+  init();
 })();
