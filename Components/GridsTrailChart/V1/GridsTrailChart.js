@@ -73,59 +73,22 @@ class TableAmountSuffix {
                 position: relative;
             }
             
-            .amount-suffix-wrapper {
-                display: inline-flex;
-                align-items: center;
-                white-space: nowrap;
-                width: 100%;
-                height: 100%;
-                justify-content: flex-end;
+            /* 让nowrap元素可以包含后缀 */
+            .table-amount-suffix-processed .nowrap {
+                display: inline-flex !important;
+                align-items: center !important;
+                white-space: nowrap !important;
             }
             
-            .amount-value {
-                flex-shrink: 0;
+            .amount-suffix-separate {
+                display: inline-block;
+                ${this.objectToCss(this.config.suffixStyle)}
             }
             
-            /* 隐藏原有的编辑器内容 */
-            .table-amount-suffix-processed .editor-container {
-                display: none !important;
+            .amount-suffix-separate.${this.config.suffixClass} {
+                /* 这里可以添加额外的样式覆盖 */
             }
         `;
-
-    // 如果使用独立元素，添加默认样式
-    if (this.config.useSeparateElement) {
-      styles += `
-                .amount-suffix-separate {
-                    display: inline-block;
-                    ${this.objectToCss(this.config.suffixStyle)}
-                }
-                
-                .amount-suffix-separate.${this.config.suffixClass} {
-                    /* 这里可以添加额外的样式覆盖 */
-                }
-            `;
-    } else {
-      // 文本模式的样式
-      styles += `
-                .table-amount-suffix-text-mode {
-                    position: relative;
-                    padding-right: 25px;
-                }
-                
-                .table-amount-suffix-text-mode .editor-container {
-                    display: none !important;
-                }
-                
-                .table-amount-suffix-text-mode::after {
-                    content: "${this.config.suffixText}";
-                    ${this.objectToCss(this.config.suffixStyle)}
-                    position: absolute;
-                    right: 0;
-                    top: 50%;
-                    transform: translateY(-50%);
-                }
-            `;
-    }
 
     styleEl.textContent = styles;
     document.head.appendChild(styleEl);
@@ -216,7 +179,6 @@ class TableAmountSuffix {
    * 查找表格行
    */
   findTableRows(container) {
-    // 多种可能的行选择器
     const rowSelectors = [
       '[class*="table-row"]',
       ".table-row",
@@ -253,7 +215,6 @@ class TableAmountSuffix {
    * 查找字段元素
    */
   findFieldElement(row, fieldKey) {
-    // 多种可能的元素选择器
     const selectors = [
       `[data-key="${fieldKey}"]`,
       `[fieldname="${fieldKey}"]`,
@@ -275,18 +236,24 @@ class TableAmountSuffix {
    * 添加后缀到元素
    */
   addSuffixToElement(element) {
+    // 查找nowrap元素
+    const nowrapElement = element.querySelector(".nowrap");
+    if (!nowrapElement) {
+      if (this.config.debug) console.log("未找到nowrap元素");
+      return false;
+    }
+
     // 获取当前文本
-    const currentText = this.getElementText(element);
+    const currentText = (
+      nowrapElement.textContent ||
+      nowrapElement.innerText ||
+      ""
+    ).trim();
     if (!currentText) return false;
 
     // 检查是否已有后缀
-    if (this.hasSuffix(element, currentText)) {
-      // 如果已经有后缀但可能是旧版本，重新处理
-      if (!element.classList.contains("table-amount-suffix-processed")) {
-        this.cleanElement(element);
-      } else {
-        return false;
-      }
+    if (this.hasSuffix(nowrapElement, currentText)) {
+      return false;
     }
 
     // 提取数字部分
@@ -302,67 +269,14 @@ class TableAmountSuffix {
 
     // 根据配置选择不同的添加方式
     if (this.config.useSeparateElement) {
-      return this.addSuffixAsSeparateElement(element, numericText);
+      return this.addSuffixAsSeparateElement(
+        nowrapElement,
+        numericText,
+        currentText,
+      );
     } else {
-      return this.addSuffixAsText(element, numericText, currentText);
+      return this.addSuffixAsText(nowrapElement, numericText);
     }
-  }
-
-  /**
-   * 获取元素文本
-   */
-  getElementText(element) {
-    // 先尝试从nowrap元素获取文本
-    const nowrapElement = element.querySelector(".nowrap");
-    if (nowrapElement) {
-      return (
-        nowrapElement.textContent ||
-        nowrapElement.innerText ||
-        ""
-      ).trim();
-    }
-
-    // 如果没有nowrap元素，尝试从editor-container获取
-    const editorContainer = element.querySelector(".editor-container");
-    if (editorContainer) {
-      return (
-        editorContainer.textContent ||
-        editorContainer.innerText ||
-        ""
-      ).trim();
-    }
-
-    // 最后尝试元素本身的文本
-    return (
-      element.textContent ||
-      element.innerText ||
-      element.value ||
-      ""
-    ).trim();
-  }
-
-  /**
-   * 清理元素内容
-   */
-  cleanElement(element) {
-    // 移除可能存在的旧版本后缀元素
-    const oldSuffix = element.querySelector(".amount-suffix-separate");
-    if (oldSuffix) {
-      oldSuffix.remove();
-    }
-
-    // 移除旧版本的包装器
-    const oldWrapper = element.querySelector(".amount-suffix-wrapper");
-    if (oldWrapper) {
-      oldWrapper.remove();
-    }
-
-    // 移除相关类名
-    element.classList.remove(
-      "table-amount-suffix-processed",
-      "table-amount-suffix-text-mode",
-      "has-amount-suffix",
-    );
   }
 
   /**
@@ -374,13 +288,14 @@ class TableAmountSuffix {
       return true;
     }
 
-    // 检查元素是否已被标记
-    if (element.classList.contains("table-amount-suffix-processed")) {
+    // 检查是否已经有后缀元素
+    if (element.querySelector(".amount-suffix-separate")) {
       return true;
     }
 
-    // 检查是否有独立的后缀元素
-    if (element.querySelector(".amount-suffix-separate")) {
+    // 检查父元素是否已被标记
+    const parent = element.closest("[data-key]");
+    if (parent && parent.classList.contains("table-amount-suffix-processed")) {
       return true;
     }
 
@@ -391,7 +306,7 @@ class TableAmountSuffix {
    * 提取数字值
    */
   extractNumericValue(text) {
-    // 移除空白字符和可能的其他字符
+    // 移除空白字符
     const cleanText = text.replace(/\s+/g, "");
     const numericMatch = cleanText.match(/[-+]?[0-9,]*\.?[0-9]+/);
     if (!numericMatch) return null;
@@ -409,25 +324,13 @@ class TableAmountSuffix {
   /**
    * 添加后缀作为独立元素
    */
-  addSuffixAsSeparateElement(element, numericText) {
+  addSuffixAsSeparateElement(nowrapElement, numericText, originalText) {
     try {
-      // 先清理旧内容
-      this.cleanElement(element);
+      // 清空nowrap元素的内容
+      nowrapElement.innerHTML = "";
 
-      // 创建一个新的内容容器
-      const contentDiv = document.createElement("div");
-      contentDiv.className = "editor-container cell-disabled";
-      contentDiv.style.cssText =
-        "padding: 0px 6px; text-align: right; justify-content: flex-end;";
-
-      // 创建包装器
-      const wrapper = document.createElement("span");
-      wrapper.className = "amount-suffix-wrapper";
-
-      // 创建数值元素
-      const valueSpan = document.createElement("span");
-      valueSpan.className = "amount-value";
-      valueSpan.textContent = numericText;
+      // 创建数值文本节点
+      const textNode = document.createTextNode(numericText);
 
       // 创建后缀元素
       const suffixSpan = document.createElement("span");
@@ -437,23 +340,16 @@ class TableAmountSuffix {
       // 应用自定义样式
       Object.assign(suffixSpan.style, this.config.suffixStyle);
 
-      // 组装
-      wrapper.appendChild(valueSpan);
-      wrapper.appendChild(suffixSpan);
-      contentDiv.appendChild(wrapper);
+      // 添加到nowrap元素
+      nowrapElement.appendChild(textNode);
+      nowrapElement.appendChild(suffixSpan);
 
-      // 清空原元素，但保留原有属性
-      const attributes = Array.from(element.attributes);
-      element.innerHTML = "";
-      attributes.forEach((attr) => {
-        element.setAttribute(attr.name, attr.value);
-      });
+      // 标记父元素为已处理
+      const parentElement = nowrapElement.closest("[data-key]");
+      if (parentElement) {
+        parentElement.classList.add("table-amount-suffix-processed");
+      }
 
-      // 添加新的内容
-      element.appendChild(contentDiv);
-
-      // 标记元素
-      element.classList.add("table-amount-suffix-processed");
       return true;
     } catch (error) {
       console.error("添加独立元素后缀失败:", error);
@@ -464,40 +360,16 @@ class TableAmountSuffix {
   /**
    * 添加后缀作为文本
    */
-  addSuffixAsText(element, numericText, originalText) {
+  addSuffixAsText(nowrapElement, numericText) {
     try {
-      // 先清理旧内容
-      this.cleanElement(element);
+      // 直接在文本后添加后缀
+      nowrapElement.textContent = numericText + ` ${this.config.suffixText}`;
 
-      // 创建新的内容容器
-      const contentDiv = document.createElement("div");
-      contentDiv.className = "editor-container cell-disabled";
-      contentDiv.style.cssText =
-        "padding: 0px 6px; text-align: right; justify-content: flex-end;";
-
-      // 创建文本元素
-      const textSpan = document.createElement("span");
-      textSpan.className = "nowrap";
-      textSpan.textContent = numericText + ` ${this.config.suffixText}`;
-
-      contentDiv.appendChild(textSpan);
-
-      // 清空原元素，但保留原有属性
-      const attributes = Array.from(element.attributes);
-      element.innerHTML = "";
-      attributes.forEach((attr) => {
-        element.setAttribute(attr.name, attr.value);
-      });
-
-      // 添加新的内容
-      element.appendChild(contentDiv);
-
-      // 标记元素并应用样式
-      element.classList.add("table-amount-suffix-text-mode");
-      element.classList.add(this.config.suffixClass);
-
-      // 应用自定义样式
-      Object.assign(element.style, this.config.suffixStyle);
+      // 标记父元素
+      const parentElement = nowrapElement.closest("[data-key]");
+      if (parentElement) {
+        parentElement.classList.add("table-amount-suffix-processed");
+      }
 
       return true;
     } catch (error) {
