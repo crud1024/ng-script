@@ -91,7 +91,7 @@ function loadSingleScript(url, type = "") {
     script.onerror = (error) => {
       console.error(
         `脚本加载失败 [${type || "unknown"}] : ${processedUrl}`,
-        error
+        error,
       );
       reject(new Error(`Failed to load script: ${processedUrl}`));
     };
@@ -258,6 +258,34 @@ document.addEventListener("DOMContentLoaded", function () {
   //     console.log('自定义脚本加载完成');
   // });
 });
+
+/**
+ * 通过回调函数方式加载单个脚本
+ * @param {string} url - 要加载的脚本URL
+ * @param {Function} successCallback - 成功回调函数
+ * @param {Function} errorCallback - 失败回调函数
+ */
+function loadScriptWithCallbacks(url, successCallback, errorCallback) {
+  loadSingleScript(url)
+    .then(() => {
+      if (successCallback && typeof successCallback === "function") {
+        successCallback();
+      }
+    })
+    .catch((error) => {
+      if (errorCallback && typeof errorCallback === "function") {
+        errorCallback(error);
+      }
+    });
+}
+
+// 创建$NG全局命名空间并添加loadScript方法
+if (typeof window.$NG === "undefined") {
+  window.$NG = {};
+}
+
+// 添加loadScript方法到$NG命名空间
+window.$NG.loadScript = loadScriptWithCallbacks;
 
 // 导出API（如果需要模块化）
 window.ScriptLoader = {
