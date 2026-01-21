@@ -531,3 +531,13 @@
   window.initTableSuffix = initTableSuffix;
   window.autoInitTableSuffix = autoInitFromDataAttributes;
 })();
+
+// 保留对类构造函数的访问，与 Message.js 保持一致的模式
+if (typeof window !== "undefined" && !window.TableCellSuffixAppenderClass) {
+  window.TableCellSuffixAppenderClass = TableCellSuffixAppender;
+}
+
+// 如果需要像 Message 那样支持模块化导入也添加这种支持
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = TableCellSuffixAppender;
+}
