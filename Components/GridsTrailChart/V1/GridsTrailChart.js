@@ -1,308 +1,307 @@
-(function () {
-  "use strict";
+/**
+ * 给表格数据单元格添加后缀
+ */
+class TableCellSuffixAppender {
+  constructor(options) {
+    this.tableId = options.tableId;
+    this.fieldSuffixMap = options.fieldSuffixMap || {};
+    this.style = Object.assign(
+      {
+        color: "#1890ff",
+        fontSize: "inherit",
+        marginLeft: "2px",
+        fontWeight: "normal",
+      },
+      options.style || {},
+    );
 
-  console.log("开始加载 TableCellSuffixAppender 组件...");
+    this.observer = null;
+    this.isObserving = false;
+    this.uniqueCellIds = new Set();
 
-  /**
-   * 给表格数据单元格添加后缀
-   * @param {Object} options 配置选项
-   */
-  class TableCellSuffixAppender {
-    constructor(options) {
-      this.tableId = options.tableId;
-      this.fieldSuffixMap = options.fieldSuffixMap || {};
-      this.style = Object.assign(
-        {
-          color: "#1890ff",
-          fontSize: "inherit",
-          marginLeft: "2px",
-          fontWeight: "normal",
-        },
-        options.style || {},
-      );
+    // 初始化样式
+    this.initStyles();
+  }
 
-      this.observer = null;
-      this.isObserving = false;
-      this.uniqueCellIds = new Set();
-    }
+  // 初始化样式
+  initStyles() {
+    if (document.getElementById("table-suffix-styles")) return;
 
-    init() {
-      this.processExistingRows();
-      this.startObserving();
-      return this;
-    }
-
-    processExistingRows() {
-      const tableContainer = document.getElementById(this.tableId);
-      if (!tableContainer) {
-        console.warn(`Table container with id "${this.tableId}" not found.`);
-        return;
+    const style = document.createElement("style");
+    style.id = "table-suffix-styles";
+    style.textContent = `
+      .cell-suffix {
+        color: #1890ff !important;
+        font-size: inherit !important;
+        margin-left: 2px !important;
       }
+    `;
+    document.head.appendChild(style);
+  }
 
-      const detailRows = tableContainer.querySelectorAll(".table-row");
-      detailRows.forEach((row) => this.processRow(row));
+  // 初始化并开始监听表格变化
+  init() {
+    this.processExistingRows();
+    this.startObserving();
+    return this;
+  }
 
-      const aggregateRows = tableContainer.querySelectorAll(".aggregates-row");
-      aggregateRows.forEach((row) => this.processRow(row));
+  // 处理已存在的行
+  processExistingRows() {
+    const tableContainer = document.getElementById(this.tableId);
+    if (!tableContainer) {
+      console.warn(`Table container with id "${this.tableId}" not found.`);
+      return;
     }
 
-    processRow(row) {
-      Object.keys(this.fieldSuffixMap).forEach((fieldKey) => {
-        const suffixConfig = this.fieldSuffixMap[fieldKey];
-        if (!suffixConfig || !suffixConfig.suffix) return;
+    // 处理明细行
+    const detailRows = tableContainer.querySelectorAll(".table-row");
+    detailRows.forEach((row) => this.processRow(row));
 
-        const cellSelector = `div[data-key="${fieldKey}"]`;
-        const cell = row.querySelector(cellSelector);
+    // 处理合计行
+    const aggregateRows = tableContainer.querySelectorAll(".aggregates-row");
+    aggregateRows.forEach((row) => this.processRow(row));
+  }
 
-        if (cell) {
-          this.processCell(cell, fieldKey, suffixConfig);
+  // 处理单行
+  processRow(row) {
+    Object.keys(this.fieldSuffixMap).forEach((fieldKey) => {
+      const suffixConfig = this.fieldSuffixMap[fieldKey];
+      if (!suffixConfig || !suffixConfig.suffix) return;
+
+      const cellSelector = `div[data-key="${fieldKey}"]`;
+      const cell = row.querySelector(cellSelector);
+
+      if (cell) {
+        this.processCell(cell, fieldKey, suffixConfig);
+      }
+    });
+  }
+
+  // 处理单个单元格
+  processCell(cell, fieldKey, suffixConfig) {
+    const cellId = this.generateCellId(cell, fieldKey);
+    if (this.uniqueCellIds.has(cellId)) return;
+
+    this.uniqueCellIds.add(cellId);
+    const numberSpan = this.findNumberSpan(cell);
+
+    if (numberSpan) {
+      const existingSuffix =
+        numberSpan.parentNode.querySelector(".cell-suffix");
+      if (existingSuffix) existingSuffix.remove();
+
+      const suffixElement = this.createSuffixElement(suffixConfig);
+      numberSpan.parentNode.insertBefore(suffixElement, numberSpan.nextSibling);
+    }
+  }
+
+  // 查找包含数字的最内层span元素
+  findNumberSpan(cell) {
+    const allSpans = cell.querySelectorAll("span");
+    const numberRegex = /^[\d,]+(\.\d+)?$/;
+
+    for (let i = allSpans.length - 1; i >= 0; i--) {
+      const span = allSpans[i];
+      const text = span.textContent.trim();
+
+      if (numberRegex.test(text.replace(/,/g, ""))) {
+        if (span.children.length === 0) {
+          return span;
         }
-      });
-    }
 
-    processCell(cell, fieldKey, suffixConfig) {
-      const cellId = this.generateCellId(cell, fieldKey);
-      if (this.uniqueCellIds.has(cellId)) return;
+        const childSpans = span.querySelectorAll("span");
+        let hasChildNumberSpan = false;
 
-      this.uniqueCellIds.add(cellId);
-      const numberSpan = this.findNumberSpan(cell);
-
-      if (numberSpan) {
-        const existingSuffix =
-          numberSpan.parentNode.querySelector(".cell-suffix");
-        if (existingSuffix) {
-          existingSuffix.remove();
-        }
-
-        const suffixElement = this.createSuffixElement(suffixConfig);
-        numberSpan.parentNode.insertBefore(
-          suffixElement,
-          numberSpan.nextSibling,
-        );
-      }
-    }
-
-    findNumberSpan(cell) {
-      const allSpans = cell.querySelectorAll("span");
-      const numberRegex = /^[\d,]+(\.\d+)?$/;
-
-      for (let i = allSpans.length - 1; i >= 0; i--) {
-        const span = allSpans[i];
-        const text = span.textContent.trim();
-
-        if (numberRegex.test(text.replace(/,/g, ""))) {
-          if (span.children.length === 0) {
-            return span;
-          }
-
-          const childSpans = span.querySelectorAll("span");
-          let hasChildNumberSpan = false;
-
-          for (let j = 0; j < childSpans.length; j++) {
-            const childText = childSpans[j].textContent.trim();
-            if (numberRegex.test(childText.replace(/,/g, ""))) {
-              hasChildNumberSpan = true;
-              break;
-            }
-          }
-
-          if (!hasChildNumberSpan) {
-            return span;
-          }
-        }
-      }
-
-      return null;
-    }
-
-    createSuffixElement(suffixConfig) {
-      const suffixSpan = document.createElement("span");
-      suffixSpan.className = "cell-suffix";
-      suffixSpan.textContent = suffixConfig.suffix;
-
-      suffixSpan.style.color = this.style.color;
-      suffixSpan.style.fontSize = this.style.fontSize;
-      suffixSpan.style.marginLeft = this.style.marginLeft;
-      suffixSpan.style.fontWeight = this.style.fontWeight;
-
-      if (suffixConfig.style) {
-        if (suffixConfig.style.color)
-          suffixSpan.style.color = suffixConfig.style.color;
-        if (suffixConfig.style.fontSize)
-          suffixSpan.style.fontSize = suffixConfig.style.fontSize;
-        if (suffixConfig.style.marginLeft)
-          suffixSpan.style.marginLeft = suffixConfig.style.marginLeft;
-        if (suffixConfig.style.fontWeight)
-          suffixSpan.style.fontWeight = suffixConfig.style.fontWeight;
-      }
-
-      return suffixSpan;
-    }
-
-    generateCellId(cell, fieldKey) {
-      const row = cell.closest(".table-row, .aggregates-row");
-      if (!row) return `${fieldKey}_${Math.random()}`;
-
-      let rowIndex = -1;
-      const parent = row.parentNode;
-      if (parent) {
-        const rows = parent.querySelectorAll(".table-row, .aggregates-row");
-        for (let i = 0; i < rows.length; i++) {
-          if (rows[i] === row) {
-            rowIndex = i;
+        for (let j = 0; j < childSpans.length; j++) {
+          const childText = childSpans[j].textContent.trim();
+          if (numberRegex.test(childText.replace(/,/g, ""))) {
+            hasChildNumberSpan = true;
             break;
           }
         }
-      }
 
-      const rect = cell.getBoundingClientRect();
-      return `${fieldKey}_${rowIndex}_${rect.top}_${rect.left}`;
-    }
-
-    startObserving() {
-      const tableContainer = document.getElementById(this.tableId);
-      if (!tableContainer || this.isObserving) return;
-
-      this.observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-            setTimeout(() => {
-              mutation.addedNodes.forEach((node) => {
-                if (node.nodeType === 1) {
-                  if (
-                    node.classList &&
-                    (node.classList.contains("table-row") ||
-                      node.classList.contains("aggregates-row"))
-                  ) {
-                    this.processRow(node);
-                  }
-                }
-              });
-            }, 0);
-          }
-        });
-      });
-
-      this.observer.observe(tableContainer, {
-        childList: true,
-        subtree: true,
-      });
-
-      this.isObserving = true;
-    }
-
-    stopObserving() {
-      if (this.observer) {
-        this.observer.disconnect();
-        this.isObserving = false;
+        if (!hasChildNumberSpan) {
+          return span;
+        }
       }
     }
 
-    update(newOptions) {
-      if (newOptions.tableId) this.tableId = newOptions.tableId;
-      if (newOptions.fieldSuffixMap)
-        this.fieldSuffixMap = newOptions.fieldSuffixMap;
-      if (newOptions.style) Object.assign(this.style, newOptions.style);
+    return null;
+  }
 
-      this.uniqueCellIds.clear();
+  // 创建后缀元素
+  createSuffixElement(suffixConfig) {
+    const suffixSpan = document.createElement("span");
+    suffixSpan.className = "cell-suffix";
+    suffixSpan.textContent = suffixConfig.suffix;
+
+    suffixSpan.style.color = this.style.color;
+    suffixSpan.style.fontSize = this.style.fontSize;
+    suffixSpan.style.marginLeft = this.style.marginLeft;
+    suffixSpan.style.fontWeight = this.style.fontWeight;
+
+    if (suffixConfig.style) {
+      if (suffixConfig.style.color)
+        suffixSpan.style.color = suffixConfig.style.color;
+      if (suffixConfig.style.fontSize)
+        suffixSpan.style.fontSize = suffixConfig.style.fontSize;
+      if (suffixConfig.style.marginLeft)
+        suffixSpan.style.marginLeft = suffixConfig.style.marginLeft;
+      if (suffixConfig.style.fontWeight)
+        suffixSpan.style.fontWeight = suffixConfig.style.fontWeight;
+    }
+
+    return suffixSpan;
+  }
+
+  // 生成单元格唯一标识
+  generateCellId(cell, fieldKey) {
+    const row = cell.closest(".table-row, .aggregates-row");
+    if (!row) return `${fieldKey}_${Math.random()}`;
+
+    let rowIndex = -1;
+    const parent = row.parentNode;
+    if (parent) {
+      const rows = parent.querySelectorAll(".table-row, .aggregates-row");
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i] === row) {
+          rowIndex = i;
+          break;
+        }
+      }
+    }
+
+    const rect = cell.getBoundingClientRect();
+    return `${fieldKey}_${rowIndex}_${rect.top}_${rect.left}`;
+  }
+
+  // 开始监听DOM变化
+  startObserving() {
+    const tableContainer = document.getElementById(this.tableId);
+    if (!tableContainer || this.isObserving) return;
+
+    this.observer = new MutationObserver(() => {
       this.processExistingRows();
-    }
+    });
 
-    refresh() {
-      const tableContainer = document.getElementById(this.tableId);
-      if (tableContainer) {
-        const existingSuffixes =
-          tableContainer.querySelectorAll(".cell-suffix");
-        existingSuffixes.forEach((suffix) => suffix.remove());
-      }
+    this.observer.observe(tableContainer, {
+      childList: true,
+      subtree: true,
+    });
 
-      this.uniqueCellIds.clear();
-      this.processExistingRows();
-    }
+    this.isObserving = true;
+  }
 
-    destroy() {
-      this.stopObserving();
-      this.uniqueCellIds.clear();
-
-      const tableContainer = document.getElementById(this.tableId);
-      if (tableContainer) {
-        const suffixes = tableContainer.querySelectorAll(".cell-suffix");
-        suffixes.forEach((suffix) => suffix.remove());
-      }
+  // 停止监听
+  stopObserving() {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.isObserving = false;
     }
   }
 
-  // 全局实例管理器
-  const _tableSuffixInstances = new Map();
+  // 更新配置
+  update(newOptions) {
+    if (newOptions.tableId) this.tableId = newOptions.tableId;
+    if (newOptions.fieldSuffixMap)
+      this.fieldSuffixMap = newOptions.fieldSuffixMap;
+    if (newOptions.style) Object.assign(this.style, newOptions.style);
 
-  /**
-   * 便捷初始化函数
-   */
-  function initTableCellSuffix(options) {
-    const appender = new TableCellSuffixAppender(options);
-    return appender.init();
+    this.uniqueCellIds.clear();
+    this.processExistingRows();
   }
 
-  /**
-   * 安全初始化函数（避免重复）
-   */
-  function safeInitTableCellSuffix(options) {
-    const key = options.tableId;
-
-    if (_tableSuffixInstances.has(key)) {
-      _tableSuffixInstances.get(key).destroy();
+  // 刷新表格中的所有后缀
+  refresh() {
+    const tableContainer = document.getElementById(this.tableId);
+    if (tableContainer) {
+      const existingSuffixes = tableContainer.querySelectorAll(".cell-suffix");
+      existingSuffixes.forEach((suffix) => suffix.remove());
     }
 
-    const instance = initTableCellSuffix(options);
-    _tableSuffixInstances.set(key, instance);
-    return instance;
+    this.uniqueCellIds.clear();
+    this.processExistingRows();
   }
 
-  // =============== 关键部分：确保挂载到全局 ===============
-  try {
-    // 先检查当前环境
-    const isBrowser = typeof window !== "undefined";
-    const isNode = typeof module !== "undefined" && module.exports;
+  // 销毁实例
+  destroy() {
+    this.stopObserving();
+    this.uniqueCellIds.clear();
 
-    if (isBrowser) {
-      // 挂载到 window 对象
-      window.TableCellSuffixAppender = TableCellSuffixAppender;
-      window.initTableCellSuffix = initTableCellSuffix;
-      window.safeInitTableCellSuffix = safeInitTableCellSuffix;
-
-      // 添加一个标志，表示组件已加载
-      window.__tableCellSuffixLoaded = true;
-
-      console.log("TableCellSuffixAppender 组件已成功挂载到全局！");
-      console.log("- 可用类：TableCellSuffixAppender");
-      console.log("- 可用函数：initTableCellSuffix, safeInitTableCellSuffix");
-
-      // 触发自定义事件，通知组件已加载
-      if (typeof CustomEvent !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("TableCellSuffixAppenderLoaded", {
-            detail: {
-              TableCellSuffixAppender,
-              initTableCellSuffix,
-              safeInitTableCellSuffix,
-            },
-          }),
-        );
-      }
+    const tableContainer = document.getElementById(this.tableId);
+    if (tableContainer) {
+      const suffixes = tableContainer.querySelectorAll(".cell-suffix");
+      suffixes.forEach((suffix) => suffix.remove());
     }
+  }
+}
 
-    if (isNode) {
-      // Node.js 环境导出
-      module.exports = {
-        TableCellSuffixAppender,
-        initTableCellSuffix,
-        safeInitTableCellSuffix,
-        _tableSuffixInstances,
-      };
-    }
-  } catch (error) {
-    console.error("挂载 TableCellSuffixAppender 时出错:", error);
+// === 关键部分：模仿 Message.js 的挂载方式 ===
+
+// 定义辅助函数
+function initTableCellSuffix(options) {
+  const appender = new TableCellSuffixAppender(options);
+  return appender.init();
+}
+
+// 全局实例管理器
+const _tableSuffixInstances = {};
+
+function safeInitTableCellSuffix(options) {
+  const key = options.tableId;
+
+  if (_tableSuffixInstances[key]) {
+    _tableSuffixInstances[key].destroy();
   }
 
-  console.log("TableCellSuffixAppender 组件加载完成！");
-})();
+  const instance = initTableCellSuffix(options);
+  _tableSuffixInstances[key] = instance;
+  return instance;
+}
+
+// === 按照 Message.js 的方式挂载到全局 ===
+
+// 关键：先检查是否在浏览器环境
+if (typeof window !== "undefined") {
+  // 1. 挂载类到全局
+  window.TableCellSuffixAppender = TableCellSuffixAppender;
+
+  // 2. 挂载辅助函数到全局
+  window.initTableCellSuffix = initTableCellSuffix;
+  window.safeInitTableCellSuffix = safeInitTableCellSuffix;
+
+  // 3. 挂载管理器到全局
+  window._tableSuffixInstances = _tableSuffixInstances;
+
+  // 4. 创建全局对象（可选）
+  window.TableCellSuffix = {
+    TableCellSuffixAppender: TableCellSuffixAppender,
+    initTableCellSuffix: initTableCellSuffix,
+    safeInitTableCellSuffix: safeInitTableCellSuffix,
+    getInstance: function (tableId) {
+      return _tableSuffixInstances[tableId];
+    },
+  };
+
+  console.log("TableCellSuffixAppender 已成功加载到 window 对象");
+}
+
+// === 兼容其他模块系统 ===
+
+// CommonJS 导出
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    TableCellSuffixAppender: TableCellSuffixAppender,
+    initTableCellSuffix: initTableCellSuffix,
+    safeInitTableCellSuffix: safeInitTableCellSuffix,
+    _tableSuffixInstances: _tableSuffixInstances,
+  };
+}
+
+// ES6 模块导出（如果需要）
+if (typeof exports !== "undefined") {
+  exports.TableCellSuffixAppender = TableCellSuffixAppender;
+  exports.initTableCellSuffix = initTableCellSuffix;
+  exports.safeInitTableCellSuffix = safeInitTableCellSuffix;
+}
