@@ -1,6 +1,6 @@
 /**
- * 表格金额后缀管理器 - 虚拟滚动/动态渲染专用版
- * 核心策略：强制创建 Flex 包裹层，将编辑器和后缀放在一起
+ * 表格金额后缀管理器 - 最终版（强制包裹方案）
+ * 针对 .editor-container 结构的专项修复
  */
 class TableAmountSuffix {
   constructor(options = {}) {
@@ -15,85 +15,80 @@ class TableAmountSuffix {
         fontSize: "inherit",
         display: "inline-block",
         verticalAlign: "middle",
+        lineHeight: "1", // 防止行高导致的偏移
       },
       debug: false,
-      observerDelay: 300,
       ...options,
     };
 
     this.container = null;
     this.observer = null;
-    this.processedCells = new WeakSet(); // 使用 WeakSet 防止内存泄漏
+    this.processedCells = new WeakSet();
     this.init();
   }
 
   init() {
-    this.injectGlobalStyles();
+    this.injectStyles();
     this.waitForContainer();
   }
 
-  // 注入全局样式（关键：强制单元格为 Flex 布局）
-  injectGlobalStyles() {
+  injectStyles() {
     if (document.getElementById("table-amount-suffix-styles")) return;
-
     const styleEl = document.createElement("style");
     styleEl.id = "table-amount-suffix-styles";
+    // 核心CSS：强制单元格内部使用Flex布局，且不换行
     styleEl.textContent = `
-            /* 关键修复 1: 强制单元格为 Flex 布局，让内部元素能对齐 */
-            .virtual-table-cell[class*="virtual-table-cell"] {
+            .virtual-table-cell.has-amount-suffix {
                 display: inline-flex !important; 
                 align-items: center !important;
                 justify-content: flex-end !important; /* 右对齐 */
+                flex-wrap: nowrap !important; /* 禁止换行 */
             }
-            
-            /* 关键修复 2: 后缀样式 */
+            /* 后缀样式 */
             .amount-suffix-separate {
-                display: inline-block;
-                vertical-align: middle;
-                flex-shrink: 0; /* 防止被压缩 */
-                white-space: nowrap;
+                display: inline-block !important;
+                flex-shrink: 0 !important; /* 禁止收缩 */
+                vertical-align: middle !important;
             }
-
-            /* 关键修复 3: 如果编辑器容器存在，确保它也能参与 Flex 布局 */
-            .editor-container, .cell-disabled, .nowrap {
+            /* 关键：让编辑器容器也变成行内Flex，不要独占一行 */
+            .virtual-table-cell .editor-container {
                 display: inline-flex !important;
                 align-items: center !important;
+                flex-shrink: 1 !important; /* 允许收缩 */
+                min-width: 0 !important; /* 防止溢出 */
+            }
+            /* 针对 nowrap span 的修复 */
+            .virtual-table-cell .nowrap {
+                display: inline-block !important;
+                vertical-align: middle !important;
             }
         `;
     document.head.appendChild(styleEl);
   }
 
-  // 等待容器加载（轮询机制）
   waitForContainer() {
     const check = () => {
       const el = document.getElementById(this.config.containerId);
       if (el) {
         this.container = el;
-        if (this.config.debug) console.log("[Suffix] 容器已加载，启动监听...");
+        if (this.config.debug) console.log("[Suffix] 容器就绪");
         this.startObserving();
-        this.scanTable(); // 初始扫描
+        this.processTable(); // 初始执行
       } else {
-        if (this.config.debug)
-          console.log("[Suffix] 等待容器:", this.config.containerId);
-        setTimeout(check, 500);
+        if (this.config.debug) console.log("[Suffix] 等待容器...");
+        setTimeout(check, 300);
       }
     };
     check();
   }
 
-  // 启动 MutationObserver
   startObserving() {
     if (!this.container) return;
-
     if (this.observer) this.observer.disconnect();
 
     this.observer = new MutationObserver(() => {
-      // 使用防抖，避免高频变动导致的性能问题
-      clearTimeout(this.scanTimer);
-      this.scanTimer = setTimeout(
-        () => this.scanTable(),
-        this.config.observerDelay,
-      );
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.processTable(), 200);
     });
 
     this.observer.observe(this.container, {
@@ -103,105 +98,104 @@ class TableAmountSuffix {
     });
   }
 
-  // 扫描表格
-  scanTable() {
+  processTable() {
     if (!this.container) return;
 
-    // 查找所有目标字段的单元格
     this.config.fieldKeys.forEach((fieldKey) => {
-      // 优先查找带 data-key 的
       const cells = this.container.querySelectorAll(`[data-key="${fieldKey}"]`);
       cells.forEach((cell) => this.fixCell(cell));
     });
   }
 
-  // 修复单个单元格（核心逻辑）
   fixCell(cell) {
-    // 1. 防止重复处理
+    // 1. 防重入：如果已经处理过，或者正在处理中，跳过
     if (this.processedCells.has(cell)) return;
 
-    // 2. 检查是否已经有后缀
+    // 2. 检查是否已有后缀（通过类名判断）
     if (cell.querySelector(".amount-suffix-separate")) {
+      cell.classList.add("has-amount-suffix");
       this.processedCells.add(cell);
       return;
     }
 
-    // 3. 查找编辑器容器或数值元素
-    let editor = cell.querySelector(
-      '.editor-container, .nowrap, [class*="cell-content"]',
-    );
+    // 3. 查找核心元素
+    const editor = cell.querySelector(".editor-container");
 
-    // 4. 如果找不到编辑器（可能还没渲染出来），但有文本内容
+    // 情况A：还没有渲染出 editor，只有纯文本（初始状态）
     if (!editor && cell.textContent.trim()) {
-      const text = cell.textContent.trim();
-      const match = text.match(/[-+]?[0-9,]*\.?[0-9]+/);
+      const match = cell.textContent.match(/[-+]?[0-9,]*\.?[0-9]+/);
       if (match) {
-        // 临时处理：直接包裹
-        this.wrapContent(cell, text, match[0]);
+        this.createWrapper(cell, match[0], null);
         this.processedCells.add(cell);
       }
       return;
     }
 
-    // 5. 如果找到了编辑器，执行“包裹”操作
+    // 情况B：已经有 editor 了（这是导致重叠的主要场景）
     if (editor) {
-      // 检查编辑器是否已经被包裹过
-      if (
-        editor.parentNode.classList &&
-        editor.parentNode.classList.contains("amount-suffix-wrapper")
-      ) {
-        this.processedCells.add(cell);
-        return;
-      }
-
-      // --- 核心修复开始 ---
-      // A. 创建包裹层
+      // 核心逻辑：创建一个 Wrapper，把 editor 和 后缀包在一起
       const wrapper = document.createElement("div");
-      wrapper.className = "amount-suffix-wrapper";
-      wrapper.style.cssText = `
-                display: inline-flex; 
-                align-items: center; 
-                justify-content: flex-end;
-                width: 100%;
-                height: 100%;
-            `;
+      wrapper.className = "amount-suffix-wrapper-inner";
 
-      // B. 创建后缀元素
+      // 应用 Flex 布局
+      Object.assign(wrapper.style, {
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        width: "100%",
+        height: "100%",
+      });
+
+      // 创建后缀
       const suffix = document.createElement("span");
       suffix.className = `amount-suffix-separate ${this.config.suffixClass}`;
       suffix.textContent = ` ${this.config.suffixText}`;
       Object.assign(suffix.style, this.config.suffixStyle);
 
-      // C. 把编辑器移动到 wrapper 里
-      // 注意：这里使用 insertBefore 确保不破坏 DOM 顺序
-      if (editor.parentNode === cell) {
-        wrapper.appendChild(editor);
-        wrapper.appendChild(suffix);
-        cell.appendChild(wrapper); // 把 wrapper 放回 cell
+      // --- 关键操作：替换 DOM ---
+      // 1. 把 editor 从原位置移除
+      const parent = editor.parentNode;
+
+      // 2. 把 wrapper 插入到 editor 原来的位置
+      if (parent) {
+        parent.insertBefore(wrapper, editor);
       } else {
-        // 如果编辑器已经在别的地方，直接在编辑器后面插入后缀
-        editor.parentNode.insertBefore(suffix, editor.nextSibling);
+        cell.appendChild(wrapper);
       }
 
-      // D. 标记为已处理
+      // 3. 把 editor 和 suffix 放进 wrapper
+      wrapper.appendChild(editor);
+      wrapper.appendChild(suffix);
+
+      // 4. 标记单元格
+      cell.classList.add("has-amount-suffix");
       this.processedCells.add(cell);
 
-      if (this.config.debug) console.log("[Suffix] 已修复单元格:", fieldKey);
+      if (this.config.debug) console.log("[Suffix] 已包裹编辑器:", fieldKey);
     }
   }
 
-  // 包裹纯文本内容的辅助方法
-  wrapContent(cell, fullText, numericText) {
+  // 备用方案：处理纯文本单元格
+  createWrapper(cell, numericText, originalFullText) {
     cell.innerHTML = ""; // 清空
+    cell.classList.add("has-amount-suffix");
 
     const wrapper = document.createElement("div");
-    wrapper.className = "amount-suffix-wrapper";
-    wrapper.style.cssText =
-      "display:inline-flex; align-items:center; justify-content:flex-end; width:100%; height:100%;";
+    Object.assign(wrapper.style, {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      width: "100%",
+      height: "100%",
+    });
 
     const valSpan = document.createElement("span");
-    valSpan.className = "amount-value";
     valSpan.textContent = numericText;
+    // 保持原有的文本样式继承
+    Object.assign(valSpan.style, {
+      display: "inline-block",
+      verticalAlign: "middle",
+    });
 
     const suffixSpan = document.createElement("span");
     suffixSpan.className = `amount-suffix-separate ${this.config.suffixClass}`;
@@ -213,15 +207,12 @@ class TableAmountSuffix {
     cell.appendChild(wrapper);
   }
 
-  // 销毁
   destroy() {
     if (this.observer) this.observer.disconnect();
-    clearTimeout(this.scanTimer);
+    clearTimeout(this.timer);
     const styleEl = document.getElementById("table-amount-suffix-styles");
     if (styleEl) styleEl.remove();
-    console.log("[Suffix] 组件已销毁");
   }
 }
 
-// 导出
 window.TableAmountSuffix = TableAmountSuffix;
