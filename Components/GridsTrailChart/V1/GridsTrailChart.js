@@ -1,573 +1,385 @@
 /**
- * 表格金额字段后缀管理器（修复版）
+ * 表格金额字段后缀管理器（修复执行时机问题）
  * @class TableAmountSuffix
  */
 class TableAmountSuffix {
-  /**
-   * 构造函数
-   * @param {Object} options 配置选项
-   */
   constructor(options = {}) {
-    // 合并默认配置
     this.config = {
-      containerId: "p_form_no_collected_cost_d1",
-      fieldKeys: ["u_no_collected_amt"],
+      containerId: "p_form_expert_fee_apply_d1",
+      fieldKeys: ["u_unit_price"],
       suffixText: "元",
-      suffixClass: "amount-suffix",
+      suffixClass: "",
       suffixStyle: {
         color: "#999",
         marginLeft: "2px",
         fontSize: "inherit",
-        fontWeight: "normal",
       },
       useSeparateElement: true,
-      scrollDebounceTime: 300,
-      updateInterval: 1000,
       autoObserve: true,
-      debug: false,
-      maxRetryCount: 10,
-      retryDelay: 500,
+      debug: true,
+      waitForStable: 2000, // 等待DOM稳定时间
+      retryAttempts: 5,
       ...options,
     };
 
-    // 状态变量
+    this.processedCells = new Map();
     this.observer = null;
     this.intervalId = null;
-    this.timeoutId = null;
-    this.isProcessing = false;
-    this.modifiedCount = 0;
-    this.rowCache = new Map();
     this.retryCount = 0;
-    this.isInitialized = false;
+    this.isInitializing = false;
 
-    // 初始化
     this.init();
   }
 
   /**
-   * 初始化组件
+   * 初始化
    */
   init() {
-    // 创建样式
+    if (this.isInitializing) return;
+    this.isInitializing = true;
+
     this.createStyles();
 
-    // 等待DOM就绪
-    this.waitForDOMReady()
+    // 等待DOM完全稳定
+    this.waitForStableDOM()
       .then(() => {
-        // 启动监听
-        if (this.config.autoObserve) {
-          this.startObserving();
-          this.isInitialized = true;
-
-          if (this.config.debug) {
-            console.log("TableAmountSuffix 初始化完成");
-          }
-        }
+        this.startObserving();
+        this.forceProcess();
       })
-      .catch((error) => {
-        console.error("TableAmountSuffix 初始化失败:", error);
+      .catch((err) => {
+        console.error("等待DOM稳定失败:", err);
       });
   }
 
   /**
-   * 等待DOM就绪
+   * 等待DOM稳定
    */
-  waitForDOMReady() {
+  waitForStableDOM() {
     return new Promise((resolve) => {
-      if (
-        document.readyState === "complete" ||
-        document.readyState === "interactive"
-      ) {
-        resolve();
+      if (document.readyState === "complete") {
+        setTimeout(resolve, 500);
         return;
       }
 
-      const checkReady = () => {
+      const checkStable = () => {
         const container = document.getElementById(this.config.containerId);
-        if (container) {
-          resolve();
-        } else if (this.retryCount < this.config.maxRetryCount) {
-          this.retryCount++;
-          setTimeout(checkReady, this.config.retryDelay);
+        if (container && container.querySelector("[data-key]")) {
+          // 等待额外时间确保DOM完全渲染
+          setTimeout(resolve, this.config.waitForStable);
         } else {
-          resolve(); // 即使没找到也继续
+          setTimeout(checkStable, 300);
         }
       };
 
-      document.addEventListener("DOMContentLoaded", checkReady);
-      setTimeout(checkReady, 100);
+      document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(checkStable, 500);
+      });
+
+      checkStable();
     });
   }
 
   /**
-   * 创建必要的样式
+   * 创建样式
    */
   createStyles() {
-    // 如果已经存在样式，先移除
     const existingStyle = document.getElementById("table-amount-suffix-styles");
-    if (existingStyle) {
-      existingStyle.remove();
-    }
+    if (existingStyle) existingStyle.remove();
 
-    // 创建样式元素
     const styleEl = document.createElement("style");
     styleEl.id = "table-amount-suffix-styles";
-
-    // 基础样式
-    let styles = `
-        .amount-suffix-wrapper {
-            display: inline-flex;
-            align-items: center;
-            flex-wrap: nowrap;
-        }
-        
-        .amount-value {
-            flex-shrink: 0;
-            white-space: nowrap;
-        }
-        
-        .amount-suffix {
-            white-space: nowrap;
-        }
-        
-        .has-amount-suffix .nowrap {
-            display: inline-flex !important;
-            align-items: center !important;
-        }
-        
-        .has-amount-suffix .nowrap > span {
-            display: inline-flex !important;
-            align-items: center !important;
-        }
-    `;
-
-    // 如果使用独立元素，添加默认样式
-    if (this.config.useSeparateElement) {
-      styles += `
+    styleEl.textContent = `
+            .amount-suffix-wrapper {
+                display: inline-flex;
+                align-items: center;
+                white-space: nowrap;
+            }
             .amount-suffix-separate {
                 display: inline-block;
-                white-space: nowrap;
                 ${this.objectToCss(this.config.suffixStyle)}
             }
-            
-            .virtual-table-cell.has-amount-suffix {
+            .virtual-table-cell.amount-suffix-processed {
                 display: flex !important;
                 align-items: center !important;
                 justify-content: flex-end !important;
             }
         `;
-    }
-
-    styleEl.textContent = styles;
     document.head.appendChild(styleEl);
   }
 
   /**
-   * 主处理函数
+   * 强制处理（修复重叠问题）
    */
-  processTable() {
-    if (this.isProcessing) return;
-
-    this.isProcessing = true;
-
-    // 防抖处理
-    if (this.timeoutId) {
-      clearTimeout(this.timeoutId);
+  forceProcess() {
+    const container = document.getElementById(this.config.containerId);
+    if (!container) {
+      console.warn("容器未找到:", this.config.containerId);
+      return;
     }
 
-    this.timeoutId = setTimeout(() => {
-      try {
-        const result = this.addSuffixToTable();
-        if (result > 0 && this.config.debug) {
-          console.log(`TableAmountSuffix: 处理了 ${result} 个字段`);
-        }
-      } catch (error) {
-        console.error("TableAmountSuffix 处理表格时出错:", error);
-      } finally {
-        this.isProcessing = false;
-        this.timeoutId = null;
-      }
-    }, 150);
-  }
+    // 先清除可能存在的重复后缀
+    this.cleanupDuplicateSuffixes();
 
-  /**
-   * 添加后缀到表格
-   */
-  addSuffixToTable() {
-    const tableContainer = document.getElementById(this.config.containerId);
-    if (!tableContainer) {
-      if (this.config.debug) {
-        console.warn(
-          `TableAmountSuffix: 容器 ${this.config.containerId} 未找到`,
-        );
-      }
-      return 0;
-    }
-
-    // 查找所有包含金额字段的单元格
-    let currentModified = 0;
-
-    // 遍历配置的字段
+    // 处理每个字段
     this.config.fieldKeys.forEach((fieldKey) => {
-      // 查找所有包含该字段的单元格
-      const cells = tableContainer.querySelectorAll(`[data-key="${fieldKey}"]`);
-
+      const cells = container.querySelectorAll(`[data-key="${fieldKey}"]`);
       cells.forEach((cell, index) => {
-        const rowKey = this.getCellKey(cell, index);
-
-        // 检查是否已经处理过
-        if (
-          this.rowCache.has(rowKey) &&
-          this.rowCache.get(rowKey) === "processed"
-        ) {
-          return;
-        }
-
-        // 尝试处理单元格
-        if (this.processCell(cell, fieldKey)) {
-          currentModified++;
-          this.rowCache.set(rowKey, "processed");
-        }
+        this.processCellSafely(cell, fieldKey, index);
       });
     });
 
-    if (currentModified > 0) {
-      this.modifiedCount += currentModified;
+    if (this.config.debug) {
+      console.log("强制处理完成");
+    }
+  }
+
+  /**
+   * 清理重复的后缀
+   */
+  cleanupDuplicateSuffixes() {
+    const container = document.getElementById(this.config.containerId);
+    if (!container) return;
+
+    // 移除所有已添加的后缀元素
+    const suffixElements = container.querySelectorAll(
+      ".amount-suffix-separate",
+    );
+    suffixElements.forEach((el) => {
+      // 只移除那些不在正确位置的重复后缀
+      const wrapper = el.closest(".amount-suffix-wrapper");
+      if (!wrapper || !wrapper.contains(el)) {
+        el.remove();
+      }
+    });
+
+    // 清除已处理的标记
+    const processedCells = container.querySelectorAll(
+      ".amount-suffix-processed",
+    );
+    processedCells.forEach((cell) => {
+      cell.classList.remove("amount-suffix-processed");
+    });
+  }
+
+  /**
+   * 安全处理单元格
+   */
+  processCellSafely(cell, fieldKey, index) {
+    if (!cell || cell.classList.contains("amount-suffix-processed")) {
+      return;
+    }
+
+    try {
+      // 获取单元格的真实文本内容
+      const textContent = this.getCellTextContent(cell);
+      if (!textContent) return;
+
+      // 检查是否已经有后缀
+      if (this.hasSuffix(cell, textContent)) {
+        cell.classList.add("amount-suffix-processed");
+        return;
+      }
+
+      // 提取数字
+      const numericValue = this.extractNumeric(textContent);
+      if (!numericValue) return;
+
+      // 替换单元格内容
+      this.replaceCellContent(cell, numericValue);
+
+      // 标记为已处理
+      cell.classList.add("amount-suffix-processed");
+
       if (this.config.debug) {
-        console.log(
-          `TableAmountSuffix: 表格金额后缀添加完成，累计处理 ${this.modifiedCount} 个字段`,
-        );
+        console.log("处理单元格:", { fieldKey, index, numericValue });
+      }
+    } catch (error) {
+      console.error("处理单元格时出错:", error);
+    }
+  }
+
+  /**
+   * 获取单元格文本内容
+   */
+  getCellTextContent(cell) {
+    // 尝试多种方式获取文本
+    let text = "";
+
+    // 1. 尝试获取 .nowrap > span 的文本
+    const nowrapSpan = cell.querySelector(".nowrap > span");
+    if (nowrapSpan && nowrapSpan.textContent) {
+      text = nowrapSpan.textContent.trim();
+    }
+
+    // 2. 如果上面没有，尝试获取 .nowrap 的文本
+    if (!text) {
+      const nowrap = cell.querySelector(".nowrap");
+      if (nowrap && nowrap.textContent) {
+        text = nowrap.textContent.trim();
       }
     }
 
-    return currentModified;
-  }
-
-  /**
-   * 获取单元格唯一标识
-   */
-  getCellKey(cell, index) {
-    const rowIndex = cell.closest("[data-row-index], [data-index]");
-    const dataKey = cell.getAttribute("data-key");
-
-    if (rowIndex) {
-      const rowId =
-        rowIndex.getAttribute("data-row-index") ||
-        rowIndex.getAttribute("data-index") ||
-        rowIndex.getAttribute("id");
-      return `${dataKey}-${rowId}`;
-    }
-
-    return `${dataKey}-${index}`;
-  }
-
-  /**
-   * 处理单个单元格
-   */
-  processCell(cell, fieldKey) {
-    if (!cell) return false;
-
-    // 检查是否已有后缀
-    if (this.hasSuffix(cell)) {
-      return false;
-    }
-
-    // 找到实际显示文本的元素
-    const textElement = this.findTextElement(cell);
-    if (!textElement) return false;
-
-    // 获取当前文本
-    const currentText = this.getElementText(textElement);
-    if (!currentText) return false;
-
-    // 提取数字部分
-    const numericMatch = this.extractNumericValue(currentText);
-    if (!numericMatch) return false;
-
-    const { numericText } = numericMatch;
-
-    // 根据配置添加后缀
-    if (this.config.useSeparateElement) {
-      return this.addSuffixAsSeparateElement(cell, textElement, numericText);
-    } else {
-      return this.addSuffixAsText(cell, textElement, numericText);
-    }
-  }
-
-  /**
-   * 查找包含文本的元素
-   */
-  findTextElement(cell) {
-    // 尝试多种可能的选择器
-    const selectors = [
-      ".nowrap",
-      ".nowrap > span",
-      ".editor-container",
-      ".editor-container > span",
-      '[class*="text"]',
-      '[class*="value"]',
-      "span",
-    ];
-
-    for (const selector of selectors) {
-      const element = cell.querySelector(selector);
-      if (element && this.getElementText(element).trim()) {
-        return element;
+    // 3. 如果还没有，尝试获取 .editor-container 的文本
+    if (!text) {
+      const editor = cell.querySelector(".editor-container");
+      if (editor && editor.textContent) {
+        text = editor.textContent.trim();
       }
     }
 
-    // 如果没有找到，返回单元格本身
-    return cell;
+    // 4. 最后使用单元格本身的文本
+    if (!text && cell.textContent) {
+      text = cell.textContent.trim();
+    }
+
+    return text;
   }
 
   /**
    * 检查是否已有后缀
    */
-  hasSuffix(element) {
-    if (element.classList.contains("has-amount-suffix")) {
+  hasSuffix(cell, textContent) {
+    if (textContent.includes(this.config.suffixText)) {
       return true;
     }
 
-    if (element.querySelector(".amount-suffix-separate")) {
+    if (cell.querySelector(".amount-suffix-separate")) {
       return true;
     }
 
-    const text = this.getElementText(element);
-    return text.includes(this.config.suffixText);
+    return false;
   }
 
   /**
-   * 提取数字值
+   * 提取数字
    */
-  extractNumericValue(text) {
-    // 移除空白字符
-    const cleanText = text.replace(/\s+/g, "");
+  extractNumeric(text) {
+    // 移除所有空白和货币符号
+    const cleanText = text.replace(/\s+/g, "").replace(/[^\d.-]/g, "");
+    const match = cleanText.match(/([-+]?[\d,]*\.?\d+)/);
 
-    // 匹配数字（包括千位分隔符和小数）
-    const numericMatch = cleanText.match(/[-+]?[0-9,]*\.?[0-9]+/);
-    if (!numericMatch) return null;
+    if (!match) return null;
 
-    const numericText = numericMatch[0];
-    const numericValue = numericText.replace(/,/g, "");
+    // 移除千位分隔符
+    const numeric = match[1].replace(/,/g, "");
 
-    if (isNaN(parseFloat(numericValue))) {
-      return null;
-    }
+    // 验证是否为有效数字
+    const number = parseFloat(numeric);
+    if (isNaN(number)) return null;
 
-    return { numericText, numericValue };
+    // 格式化为两位小数
+    return number.toFixed(2);
   }
 
   /**
-   * 添加后缀作为独立元素
+   * 替换单元格内容
    */
-  addSuffixAsSeparateElement(cell, textElement, numericText) {
-    try {
-      // 标记单元格
-      cell.classList.add("has-amount-suffix");
+  replaceCellContent(cell, numericValue) {
+    // 清空单元格内容
+    cell.innerHTML = "";
 
-      // 创建包装器
-      const wrapper = document.createElement("span");
-      wrapper.className = "amount-suffix-wrapper";
+    // 创建包装器
+    const wrapper = document.createElement("span");
+    wrapper.className = "amount-suffix-wrapper";
 
-      // 获取现有的内容结构
-      let contentElement = textElement;
+    // 创建数值显示
+    const valueSpan = document.createElement("span");
+    valueSpan.className = "amount-value";
+    valueSpan.textContent = numericValue;
 
-      // 如果 textElement 内部有 span 包含文本，就用那个
-      if (textElement.querySelector("span")) {
-        const innerSpan = textElement.querySelector("span");
-        if (innerSpan.textContent.trim() === numericText) {
-          contentElement = innerSpan;
-        }
-      }
+    // 创建后缀
+    const suffixSpan = document.createElement("span");
+    suffixSpan.className = "amount-suffix-separate";
+    suffixSpan.textContent = ` ${this.config.suffixText}`;
 
-      // 备份原有内容
-      const originalContent = contentElement.innerHTML;
+    // 应用样式
+    Object.assign(suffixSpan.style, this.config.suffixStyle);
 
-      // 清空并重新构建
-      wrapper.innerHTML = `
-                <span class="amount-value">${numericText}</span>
-                <span class="amount-suffix-separate ${this.config.suffixClass}">${this.config.suffixText}</span>
-            `;
-
-      // 应用自定义样式到后缀
-      const suffixSpan = wrapper.querySelector(".amount-suffix-separate");
-      Object.assign(suffixSpan.style, this.config.suffixStyle);
-
-      // 替换内容
-      if (contentElement === cell) {
-        cell.innerHTML = "";
-        cell.appendChild(wrapper);
-      } else {
-        contentElement.innerHTML = "";
-        contentElement.appendChild(wrapper);
-      }
-
-      return true;
-    } catch (error) {
-      console.error("添加后缀失败:", error);
-      return false;
-    }
+    // 组装
+    wrapper.appendChild(valueSpan);
+    wrapper.appendChild(suffixSpan);
+    cell.appendChild(wrapper);
   }
 
   /**
-   * 添加后缀作为文本
-   */
-  addSuffixAsText(cell, textElement, numericText) {
-    try {
-      // 直接在文本后添加后缀
-      const newText = numericText + ` ${this.config.suffixText}`;
-
-      if (textElement.textContent !== undefined) {
-        textElement.textContent = newText;
-      } else if (textElement.innerText !== undefined) {
-        textElement.innerText = newText;
-      }
-
-      // 标记元素
-      cell.classList.add("has-amount-suffix");
-      textElement.classList.add(this.config.suffixClass);
-
-      // 应用自定义样式
-      Object.assign(textElement.style, this.config.suffixStyle);
-
-      return true;
-    } catch (error) {
-      console.error("添加后缀文本失败:", error);
-      return false;
-    }
-  }
-
-  /**
-   * 获取元素文本
-   */
-  getElementText(element) {
-    if (!element) return "";
-
-    // 尝试多种获取文本的方式
-    const text =
-      element.textContent || element.innerText || element.value || "";
-    return text.toString().trim();
-  }
-
-  /**
-   * 将样式对象转换为CSS字符串
-   */
-  objectToCss(styleObj) {
-    return Object.entries(styleObj)
-      .map(([key, value]) => `${this.camelToKebab(key)}: ${value};`)
-      .join(" ");
-  }
-
-  /**
-   * 驼峰转连字符
-   */
-  camelToKebab(str) {
-    return str.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
-  }
-
-  /**
-   * 启动监听
+   * 开始观察
    */
   startObserving() {
-    this.setupMutationObserver();
-    this.startPeriodicCheck();
-
-    // 初始处理，尝试多次以确保处理成功
-    setTimeout(() => this.processTable(), 100);
-    setTimeout(() => this.processTable(), 500);
-    setTimeout(() => this.processTable(), 1000);
-  }
-
-  /**
-   * 设置MutationObserver
-   */
-  setupMutationObserver() {
-    const tableContainer = document.getElementById(this.config.containerId);
-    if (!tableContainer) {
-      if (this.config.debug) {
-        console.warn("TableAmountSuffix: 未找到表格容器，稍后重试");
-      }
-      setTimeout(() => this.setupMutationObserver(), 1000);
+    const container = document.getElementById(this.config.containerId);
+    if (!container) {
+      setTimeout(() => this.startObserving(), 1000);
       return;
     }
 
-    // 如果已有观察器，先断开
+    // 设置MutationObserver
     if (this.observer) {
       this.observer.disconnect();
     }
 
-    this.observer = new MutationObserver(() => {
-      // 清除缓存，重新处理
-      this.rowCache.clear();
-      this.processTable();
+    this.observer = new MutationObserver((mutations) => {
+      let shouldUpdate = false;
+
+      mutations.forEach((mutation) => {
+        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+          shouldUpdate = true;
+        }
+      });
+
+      if (shouldUpdate) {
+        this.forceProcess();
+      }
     });
 
-    this.observer.observe(tableContainer, {
+    this.observer.observe(container, {
       childList: true,
       subtree: true,
-      attributes: true,
       characterData: true,
     });
 
-    if (this.config.debug) {
-      console.log("TableAmountSuffix: MutationObserver 已启动");
-    }
-  }
-
-  /**
-   * 启动定期检查
-   */
-  startPeriodicCheck() {
+    // 定期检查
     if (this.intervalId) {
       clearInterval(this.intervalId);
     }
 
     this.intervalId = setInterval(() => {
-      this.processTable();
-    }, this.config.updateInterval);
+      this.forceProcess();
+    }, 3000);
+
+    if (this.config.debug) {
+      console.log("开始观察表格变化");
+    }
   }
 
   /**
-   * 手动重新处理表格
+   * 辅助方法：对象转CSS
    */
-  reapply() {
-    this.rowCache.clear();
-    this.processTable();
+  objectToCss(obj) {
+    return Object.entries(obj)
+      .map(
+        ([key, value]) =>
+          `${key.replace(/([A-Z])/g, "-$1").toLowerCase()}: ${value};`,
+      )
+      .join(" ");
   }
 
   /**
-   * 销毁组件
+   * 销毁
    */
   destroy() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-
-    if (this.timeoutId) {
-      clearTimeout(this.timeoutId);
-      this.timeoutId = null;
-    }
-
     if (this.observer) {
       this.observer.disconnect();
-      this.observer = null;
+    }
+
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
     }
 
     const styleEl = document.getElementById("table-amount-suffix-styles");
     if (styleEl) {
       styleEl.remove();
     }
-
-    this.rowCache.clear();
-    this.isInitialized = false;
   }
 }
 
-// 导出到全局
+// 导出
 window.TableAmountSuffix = TableAmountSuffix;
-
-// 自动初始化函数（可选）
-window.initTableAmountSuffix = function (options) {
-  return new TableAmountSuffix(options);
-};
