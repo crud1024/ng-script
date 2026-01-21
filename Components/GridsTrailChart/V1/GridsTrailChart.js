@@ -373,11 +373,14 @@ function safeInitTableCellSuffix(options) {
 }
 
 // 导出到全局作用域
-if (typeof window !== "undefined") {
-  window.TableCellSuffixAppender = TableCellSuffixAppender;
-  window.initTableCellSuffix = initTableCellSuffix;
-  window.safeInitTableCellSuffix = safeInitTableCellSuffix;
-}
+window.TableCellSuffixAppender = TableCellSuffixAppender;
+window.initTableCellSuffix = initTableCellSuffix;
+window.safeInitTableCellSuffix = safeInitTableCellSuffix;
+// if (typeof window !== "undefined") {
+//   window.TableCellSuffixAppender = TableCellSuffixAppender;
+//   window.initTableCellSuffix = initTableCellSuffix;
+//   window.safeInitTableCellSuffix = safeInitTableCellSuffix;
+// }
 
 // 示例使用
 /*
