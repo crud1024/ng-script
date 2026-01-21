@@ -1,6 +1,5 @@
 /**
- * 表格金额字段后缀管理器 - 移除默认样式类选择器
- * @class TableAmountSuffix
+ * 表格金额字段后缀管理器 - 异步安全版
  */
 class TableAmountSuffix {
   constructor(options = {}) {
@@ -8,7 +7,7 @@ class TableAmountSuffix {
       containerId: "p_form_no_collected_cost_d1",
       fieldKeys: ["u_no_collected_amt"],
       suffixText: "元",
-      suffixClass: "", // 移除默认值，为空
+      suffixClass: "",
       suffixStyle: {
         color: "#999",
         marginLeft: "2px",
@@ -19,9 +18,12 @@ class TableAmountSuffix {
       updateInterval: 1000,
       autoObserve: true,
       debug: false,
+      waitForRender: 500, // 新增：等待渲染时间
+      maxAttempts: 10, // 新增：最大尝试次数
       ...options,
     };
 
+    this.attemptCount = 0;
     this.observer = null;
     this.intervalId = null;
     this.timeoutId = null;
@@ -29,14 +31,53 @@ class TableAmountSuffix {
     this.modifiedCount = 0;
     this.rowCache = new Set();
 
-    this.init();
+    // 延迟初始化
+    this.delayedInit();
+  }
+
+  delayedInit() {
+    // 等待指定的时间
+    setTimeout(() => {
+      this.init();
+    }, this.config.waitForRender);
   }
 
   init() {
+    // 检查表格容器是否存在
+    const tableContainer = document.getElementById(this.config.containerId);
+    if (!tableContainer) {
+      this.attemptCount++;
+
+      if (this.attemptCount < this.config.maxAttempts) {
+        if (this.config.debug) {
+          console.log(
+            `表格容器 ${this.config.containerId} 未找到，第 ${this.attemptCount} 次重试...`,
+          );
+        }
+        setTimeout(() => this.init(), 500);
+        return;
+      } else {
+        if (this.config.debug) {
+          console.error(
+            `表格容器 ${this.config.containerId} 不存在，已尝试 ${this.attemptCount} 次`,
+          );
+        }
+        return;
+      }
+    }
+
+    if (this.config.debug) {
+      console.log("TableAmountSuffix 初始化成功，开始处理表格");
+    }
+
     this.createStyles();
+
     if (this.config.autoObserve) {
       this.startObserving();
     }
+
+    // 立即处理一次
+    this.processTable();
   }
 
   createStyles() {
@@ -46,15 +87,11 @@ class TableAmountSuffix {
     const styleEl = document.createElement("style");
     styleEl.id = "table-amount-suffix-styles";
 
-    // 只添加基础样式，不添加基于类的样式
     const styles = `
-      .amount-suffix-separate {
-        display: inline;
-      }
-      
-      /* 只为特定类名添加样式（如果有配置的话） */
-      ${this.config.suffixClass ? `.${this.config.suffixClass} { ${this.objectToCss(this.config.suffixStyle)} }` : ""}
-    `;
+            .amount-suffix-separate {
+                display: inline;
+            }
+        `;
 
     styleEl.textContent = styles;
     document.head.appendChild(styleEl);
@@ -92,7 +129,15 @@ class TableAmountSuffix {
     const tableContainer = document.getElementById(this.config.containerId);
     if (!tableContainer) return 0;
 
+    // 检查表格是否有数据
     const rows = this.findTableRows(tableContainer);
+    if (rows.length === 0) {
+      if (this.config.debug) {
+        console.log("表格没有数据行，等待下一次检查");
+      }
+      return 0;
+    }
+
     let currentModified = 0;
 
     rows.forEach((row) => {
@@ -101,9 +146,18 @@ class TableAmountSuffix {
 
       this.config.fieldKeys.forEach((fieldKey) => {
         const element = row.querySelector(`[data-key="${fieldKey}"]`);
-        if (element && this.addSuffixToElement(element)) {
-          currentModified++;
-          this.modifiedCount++;
+        if (element) {
+          // 先检查是否有 nowrap 元素
+          const nowrapElement = element.querySelector(".nowrap");
+          if (
+            nowrapElement &&
+            !nowrapElement.textContent.includes(this.config.suffixText)
+          ) {
+            if (this.addSuffixToElement(element)) {
+              currentModified++;
+              this.modifiedCount++;
+            }
+          }
         }
       });
 
@@ -122,7 +176,10 @@ class TableAmountSuffix {
       '[class*="table-row"]',
       ".table-row",
       "[data-row-index]",
+      "tr[data-index]",
       "tr",
+      ".row",
+      ".ant-table-row",
     ];
 
     for (const selector of selectors) {
@@ -130,7 +187,11 @@ class TableAmountSuffix {
       if (rows.length > 0) return rows;
     }
 
-    return container.children;
+    // 如果没有找到，尝试查找 tbody 的子元素
+    const tbodyRows = container.querySelectorAll("tbody > *");
+    if (tbodyRows.length > 0) return tbodyRows;
+
+    return [];
   }
 
   getRowKey(row) {
@@ -143,110 +204,67 @@ class TableAmountSuffix {
     );
   }
 
-  /**
-   * 关键方法：添加后缀元素
-   */
   addSuffixToElement(element) {
-    // 查找 nowrap 元素
     const nowrapElement = element.querySelector(".nowrap");
     if (!nowrapElement) return false;
 
-    // 获取文本内容
     const originalText = nowrapElement.textContent.trim();
-
-    // 检查是否已经有后缀
-    if (originalText.includes(this.config.suffixText)) {
+    if (!originalText || originalText.includes(this.config.suffixText)) {
       return false;
     }
 
-    // 提取数字部分
     const numberMatch = originalText.match(/[\d,.]+/);
     if (!numberMatch) return false;
 
     const numberText = numberMatch[0];
 
-    // 创建新的内容
-    if (this.config.useSeparateElement) {
-      // 方法1：使用单独元素
-      return this.addSeparateElementSuffix(
-        nowrapElement,
-        numberText,
-        originalText,
-      );
-    } else {
-      // 方法2：直接添加文本
-      return this.addTextSuffix(nowrapElement, numberText);
+    // 清空并重新构建
+    nowrapElement.innerHTML = "";
+
+    // 添加数字
+    const numberNode = document.createTextNode(numberText);
+    nowrapElement.appendChild(numberNode);
+
+    // 添加后缀元素
+    const suffixSpan = document.createElement("span");
+    suffixSpan.className = "amount-suffix-separate";
+
+    if (this.config.suffixClass) {
+      suffixSpan.classList.add(this.config.suffixClass);
     }
-  }
 
-  /**
-   * 添加独立元素后缀 - 修复版本
-   */
-  addSeparateElementSuffix(nowrapElement, numberText, originalText) {
-    try {
-      // 清空 nowrap 元素的所有内容
-      nowrapElement.innerHTML = "";
+    suffixSpan.textContent = ` ${this.config.suffixText}`;
 
-      // 创建数字文本节点
-      const numberNode = document.createTextNode(numberText);
+    // 应用样式
+    Object.assign(suffixSpan.style, this.config.suffixStyle);
 
-      // 创建后缀元素 - 只添加必要的类名
-      const suffixSpan = document.createElement("span");
-      suffixSpan.className = "amount-suffix-separate";
+    nowrapElement.appendChild(suffixSpan);
 
-      // 如果有配置的类名，添加到class中
-      if (this.config.suffixClass) {
-        suffixSpan.classList.add(this.config.suffixClass);
-      }
-
-      suffixSpan.textContent = ` ${this.config.suffixText}`;
-
-      // 直接应用样式到元素（不使用CSS类选择器）
-      Object.assign(suffixSpan.style, this.config.suffixStyle);
-
-      // 添加到 nowrap 元素
-      nowrapElement.appendChild(numberNode);
-      nowrapElement.appendChild(suffixSpan);
-
-      return true;
-    } catch (error) {
-      console.error("添加独立元素后缀失败:", error);
-      return false;
-    }
-  }
-
-  /**
-   * 添加文本后缀
-   */
-  addTextSuffix(nowrapElement, numberText) {
-    try {
-      nowrapElement.textContent = numberText + ` ${this.config.suffixText}`;
-      return true;
-    } catch (error) {
-      console.error("添加文本后缀失败:", error);
-      return false;
-    }
+    return true;
   }
 
   startObserving() {
     this.setupMutationObserver();
     this.setupScrollListener();
     this.startPeriodicCheck();
-    setTimeout(() => this.processTable(), 100);
   }
 
   setupMutationObserver() {
     const tableContainer = document.getElementById(this.config.containerId);
-    if (!tableContainer) {
-      setTimeout(() => this.setupMutationObserver(), 1000);
-      return;
-    }
+    if (!tableContainer) return;
 
     if (this.observer) this.observer.disconnect();
 
-    this.observer = new MutationObserver(() => {
-      this.rowCache.clear();
-      setTimeout(() => this.processTable(), 100);
+    this.observer = new MutationObserver((mutations) => {
+      // 检查是否有新增行
+      const hasNewRows = mutations.some((mutation) => {
+        return mutation.type === "childList" && mutation.addedNodes.length > 0;
+      });
+
+      if (hasNewRows) {
+        this.rowCache.clear();
+        setTimeout(() => this.processTable(), 100);
+      }
     });
 
     this.observer.observe(tableContainer, {
