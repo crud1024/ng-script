@@ -1,5 +1,5 @@
 /**
- * 表格金额字段后缀管理器 - 异步安全版
+ * 表格金额字段后缀管理器 - 彻底修复重叠问题
  */
 class TableAmountSuffix {
   constructor(options = {}) {
@@ -18,8 +18,8 @@ class TableAmountSuffix {
       updateInterval: 1000,
       autoObserve: true,
       debug: false,
-      waitForRender: 500, // 新增：等待渲染时间
-      maxAttempts: 10, // 新增：最大尝试次数
+      waitForRender: 1000,
+      maxAttempts: 10,
       ...options,
     };
 
@@ -32,42 +32,22 @@ class TableAmountSuffix {
     this.rowCache = new Set();
 
     // 延迟初始化
-    this.delayedInit();
-  }
-
-  delayedInit() {
-    // 等待指定的时间
-    setTimeout(() => {
-      this.init();
-    }, this.config.waitForRender);
+    setTimeout(() => this.init(), this.config.waitForRender);
   }
 
   init() {
-    // 检查表格容器是否存在
     const tableContainer = document.getElementById(this.config.containerId);
     if (!tableContainer) {
       this.attemptCount++;
-
       if (this.attemptCount < this.config.maxAttempts) {
-        if (this.config.debug) {
-          console.log(
-            `表格容器 ${this.config.containerId} 未找到，第 ${this.attemptCount} 次重试...`,
-          );
-        }
         setTimeout(() => this.init(), 500);
         return;
-      } else {
-        if (this.config.debug) {
-          console.error(
-            `表格容器 ${this.config.containerId} 不存在，已尝试 ${this.attemptCount} 次`,
-          );
-        }
-        return;
       }
+      return;
     }
 
     if (this.config.debug) {
-      console.log("TableAmountSuffix 初始化成功，开始处理表格");
+      console.log("TableAmountSuffix 初始化成功");
     }
 
     this.createStyles();
@@ -76,8 +56,8 @@ class TableAmountSuffix {
       this.startObserving();
     }
 
-    // 立即处理一次
-    this.processTable();
+    // 立即处理
+    this.processTableImmediately();
   }
 
   createStyles() {
@@ -88,8 +68,10 @@ class TableAmountSuffix {
     styleEl.id = "table-amount-suffix-styles";
 
     const styles = `
-            .amount-suffix-separate {
-                display: inline;
+            /* 完全隐藏可能有问题的元素 */
+            .suffix-overlap-fix {
+                display: inline-flex !important;
+                align-items: center !important;
             }
         `;
 
@@ -97,46 +79,31 @@ class TableAmountSuffix {
     document.head.appendChild(styleEl);
   }
 
-  objectToCss(styleObj) {
-    return Object.entries(styleObj)
-      .map(([key, value]) => `${this.camelToKebab(key)}: ${value};`)
-      .join(" ");
-  }
-
-  camelToKebab(str) {
-    return str.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
-  }
-
-  processTable() {
+  /**
+   * 立即处理表格，不延迟
+   */
+  processTableImmediately() {
     if (this.isProcessing) return;
     this.isProcessing = true;
 
-    if (this.timeoutId) clearTimeout(this.timeoutId);
-    this.timeoutId = setTimeout(() => {
-      try {
-        const result = this.addSuffixToTable();
-        if (result > 0 && this.config.debug) {
-          console.log(`处理了 ${result} 个字段`);
-        }
-      } finally {
-        this.isProcessing = false;
-        this.timeoutId = null;
+    try {
+      const result = this.addSuffixToTable();
+      if (result > 0) {
+        console.log(`表格金额后缀添加完成，处理了 ${result} 个字段`);
       }
-    }, 50);
+    } catch (error) {
+      console.error("处理表格失败:", error);
+    } finally {
+      this.isProcessing = false;
+    }
   }
 
   addSuffixToTable() {
     const tableContainer = document.getElementById(this.config.containerId);
     if (!tableContainer) return 0;
 
-    // 检查表格是否有数据
     const rows = this.findTableRows(tableContainer);
-    if (rows.length === 0) {
-      if (this.config.debug) {
-        console.log("表格没有数据行，等待下一次检查");
-      }
-      return 0;
-    }
+    if (rows.length === 0) return 0;
 
     let currentModified = 0;
 
@@ -146,27 +113,14 @@ class TableAmountSuffix {
 
       this.config.fieldKeys.forEach((fieldKey) => {
         const element = row.querySelector(`[data-key="${fieldKey}"]`);
-        if (element) {
-          // 先检查是否有 nowrap 元素
-          const nowrapElement = element.querySelector(".nowrap");
-          if (
-            nowrapElement &&
-            !nowrapElement.textContent.includes(this.config.suffixText)
-          ) {
-            if (this.addSuffixToElement(element)) {
-              currentModified++;
-              this.modifiedCount++;
-            }
-          }
+        if (element && this.fixSuffixForElement(element)) {
+          currentModified++;
+          this.modifiedCount++;
         }
       });
 
       this.rowCache.add(rowKey);
     });
-
-    if (currentModified > 0) {
-      console.log(`表格金额后缀添加完成，本次处理 ${currentModified} 个字段`);
-    }
 
     return currentModified;
   }
@@ -187,7 +141,6 @@ class TableAmountSuffix {
       if (rows.length > 0) return rows;
     }
 
-    // 如果没有找到，尝试查找 tbody 的子元素
     const tbodyRows = container.querySelectorAll("tbody > *");
     if (tbodyRows.length > 0) return tbodyRows;
 
@@ -204,28 +157,133 @@ class TableAmountSuffix {
     );
   }
 
-  addSuffixToElement(element) {
+  /**
+   * 关键修复函数 - 彻底解决重叠问题
+   */
+  fixSuffixForElement(element) {
+    // 1. 先找到 nowrap 元素
     const nowrapElement = element.querySelector(".nowrap");
     if (!nowrapElement) return false;
 
+    // 2. 获取原始文本
     const originalText = nowrapElement.textContent.trim();
-    if (!originalText || originalText.includes(this.config.suffixText)) {
+    if (!originalText) return false;
+
+    // 3. 检查是否已经有后缀
+    if (originalText.includes(this.config.suffixText)) {
+      // 检查后缀是否正确，不正确则修复
+      if (!this.isSuffixCorrect(nowrapElement)) {
+        return this.rebuildNowrap(nowrapElement, originalText);
+      }
       return false;
     }
 
+    // 4. 提取数字
     const numberMatch = originalText.match(/[\d,.]+/);
     if (!numberMatch) return false;
 
     const numberText = numberMatch[0];
 
-    // 清空并重新构建
-    nowrapElement.innerHTML = "";
+    // 5. 重建 nowrap 元素
+    return this.rebuildNowrap(nowrapElement, originalText);
+  }
 
-    // 添加数字
-    const numberNode = document.createTextNode(numberText);
-    nowrapElement.appendChild(numberNode);
+  /**
+   * 检查后缀是否正确
+   */
+  isSuffixCorrect(nowrapElement) {
+    // 检查是否有正确格式的后缀
+    const suffixElements = nowrapElement.querySelectorAll(
+      '.amount-suffix-separate, [class*="suffix"]',
+    );
 
-    // 添加后缀元素
+    if (suffixElements.length === 0) {
+      // 没有后缀元素，检查文本
+      const text = nowrapElement.textContent.trim();
+      return text.endsWith(this.config.suffixText);
+    }
+
+    // 检查后缀元素是否在正确的位置
+    const lastChild = nowrapElement.lastElementChild;
+    if (!lastChild) return false;
+
+    return lastChild.textContent.includes(this.config.suffixText);
+  }
+
+  /**
+   * 重建 nowrap 元素内容 - 彻底解决重叠的核心
+   */
+  rebuildNowrap(nowrapElement, originalText) {
+    try {
+      // 提取数字
+      const numberMatch = originalText.match(/[\d,.]+/);
+      if (!numberMatch) return false;
+
+      const numberText = numberMatch[0];
+
+      // 方法1: 暴力清空重建（最保险）
+      this.forceRebuildNowrap(nowrapElement, numberText);
+
+      // 方法2: 更优雅的方式（备用）
+      // this.elegantRebuildNowrap(nowrapElement, numberText, originalText);
+
+      return true;
+    } catch (error) {
+      console.error("重建nowrap失败:", error);
+      return false;
+    }
+  }
+
+  /**
+   * 暴力清空重建 - 100%有效
+   */
+  forceRebuildNowrap(nowrapElement, numberText) {
+    // 1. 保存原有的样式和类
+    const originalClasses = nowrapElement.className;
+    const originalStyles = nowrapElement.getAttribute("style");
+
+    // 2. 创建新的HTML结构
+    const newHtml = `
+            <span class="suffix-overlap-fix">
+                <span class="number-part">${numberText}</span>
+                <span class="amount-suffix-separate" style="${this.getStyleString()}">${this.config.suffixText}</span>
+            </span>
+        `;
+
+    // 3. 替换内容
+    nowrapElement.innerHTML = newHtml;
+
+    // 4. 恢复原有类名
+    nowrapElement.className = originalClasses + " suffix-overlap-fix";
+
+    // 5. 恢复原有样式
+    if (originalStyles) {
+      nowrapElement.setAttribute("style", originalStyles);
+    }
+
+    // 6. 应用自定义样式到后缀元素
+    const suffixElement = nowrapElement.querySelector(
+      ".amount-suffix-separate",
+    );
+    if (suffixElement && this.config.suffixClass) {
+      suffixElement.classList.add(this.config.suffixClass);
+      Object.assign(suffixElement.style, this.config.suffixStyle);
+    }
+  }
+
+  /**
+   * 优雅的重建方式
+   */
+  elegantRebuildNowrap(nowrapElement, numberText, originalText) {
+    // 1. 清空所有子节点
+    while (nowrapElement.firstChild) {
+      nowrapElement.removeChild(nowrapElement.firstChild);
+    }
+
+    // 2. 创建数字文本节点
+    const textNode = document.createTextNode(numberText);
+
+    // 3. 创建后缀元素
     const suffixSpan = document.createElement("span");
     suffixSpan.className = "amount-suffix-separate";
 
@@ -235,12 +293,26 @@ class TableAmountSuffix {
 
     suffixSpan.textContent = ` ${this.config.suffixText}`;
 
-    // 应用样式
+    // 4. 应用样式
     Object.assign(suffixSpan.style, this.config.suffixStyle);
 
+    // 5. 添加到nowrap
+    nowrapElement.appendChild(textNode);
     nowrapElement.appendChild(suffixSpan);
+  }
 
-    return true;
+  /**
+   * 将样式对象转为字符串
+   */
+  getStyleString() {
+    if (!this.config.suffixStyle) return "";
+
+    return Object.entries(this.config.suffixStyle)
+      .map(([key, value]) => {
+        const cssKey = key.replace(/([A-Z])/g, "-$1").toLowerCase();
+        return `${cssKey}:${value}`;
+      })
+      .join(";");
   }
 
   startObserving() {
@@ -255,16 +327,9 @@ class TableAmountSuffix {
 
     if (this.observer) this.observer.disconnect();
 
-    this.observer = new MutationObserver((mutations) => {
-      // 检查是否有新增行
-      const hasNewRows = mutations.some((mutation) => {
-        return mutation.type === "childList" && mutation.addedNodes.length > 0;
-      });
-
-      if (hasNewRows) {
-        this.rowCache.clear();
-        setTimeout(() => this.processTable(), 100);
-      }
+    this.observer = new MutationObserver(() => {
+      this.rowCache.clear();
+      setTimeout(() => this.processTableImmediately(), 100);
     });
 
     this.observer.observe(tableContainer, {
@@ -283,7 +348,7 @@ class TableAmountSuffix {
       if (scrollTimer) clearTimeout(scrollTimer);
       scrollTimer = setTimeout(() => {
         this.rowCache.clear();
-        this.processTable();
+        this.processTableImmediately();
       }, this.config.scrollDebounceTime);
     };
 
@@ -294,13 +359,13 @@ class TableAmountSuffix {
   startPeriodicCheck() {
     if (this.intervalId) clearInterval(this.intervalId);
     this.intervalId = setInterval(() => {
-      this.processTable();
+      this.processTableImmediately();
     }, this.config.updateInterval);
   }
 
   reapply() {
     this.rowCache.clear();
-    this.processTable();
+    this.processTableImmediately();
   }
 
   destroy() {
