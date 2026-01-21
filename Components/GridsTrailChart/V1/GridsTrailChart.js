@@ -1,6 +1,7 @@
 /**
  * TableCellSuffixAppender - 表格数据单元格添加后缀组件
  * 仿 NG-Slider 的实现方式
+ * 更新：优化导出方式，确保全局可用
  */
 
 (function () {
@@ -463,13 +464,48 @@
     }
   }
 
+  // ============================================
+  // 优化的导出方式 - 确保在window上可用
+  // ============================================
+
+  // 先确保window对象存在
+  if (typeof window !== "undefined") {
+    // 直接赋值给window，使用多个可能的名称确保可用性
+    window.TableCellSuffixAppender = TableCellSuffixAppender;
+
+    // 同时设置别名，与Message.js保持一致的模式
+    window.TableCellSuffixAppenderClass = TableCellSuffixAppender;
+
+    // 如果有TableAmountSuffix存在，可能是同一个类
+    if (!window.TableAmountSuffix) {
+      window.TableAmountSuffix = TableCellSuffixAppender;
+    }
+
+    // 设置一个标志，表示类已加载
+    window.__TableCellSuffixAppenderLoaded = true;
+
+    console.log("TableCellSuffixAppender已注册到全局对象", {
+      TableCellSuffixAppender: typeof TableCellSuffixAppender,
+      TableAmountSuffix: typeof window.TableAmountSuffix,
+      NGSlider: typeof window.NGSlider,
+      Message: typeof window.Message,
+    });
+  }
+
+  // ============================================
+  // 初始化辅助函数
+  // ============================================
+
   /**
    * 通用选择器初始化函数
    * @param {string} selector - 选择器
    * @param {Object} options - 默认配置
    * @returns {Array} 初始化的实例数组
    */
-  function initTableSuffix(selector = ".table-container", options = {}) {
+  window.initTableSuffix = function (
+    selector = ".table-container",
+    options = {},
+  ) {
     const containers = document.querySelectorAll(selector);
     const instances = [];
 
@@ -495,12 +531,12 @@
     });
 
     return instances;
-  }
+  };
 
   /**
    * 通过data属性自动初始化
    */
-  function autoInitFromDataAttributes() {
+  window.autoInitTableSuffix = function () {
     const containers = document.querySelectorAll("[data-table-suffix]");
     containers.forEach((container) => {
       const tableId = container.id || container.dataset.tableId;
@@ -521,23 +557,88 @@
         console.warn("Invalid data-table-suffix attribute", e);
       }
     });
+  };
+
+  /**
+   * 手动初始化函数，可在任何地方调用
+   * @param {string|Object} tableIdOrOptions - 表格ID或配置对象
+   * @param {Object} fieldSuffixMap - 字段后缀映射表
+   * @returns {TableCellSuffixAppender} 实例
+   */
+  window.createTableSuffixAppender = function (
+    tableIdOrOptions,
+    fieldSuffixMap,
+  ) {
+    let options;
+
+    if (typeof tableIdOrOptions === "string") {
+      options = {
+        tableId: tableIdOrOptions,
+        fieldSuffixMap: fieldSuffixMap || {},
+      };
+    } else {
+      options = tableIdOrOptions;
+    }
+
+    if (!options.tableId) {
+      console.error("Table ID is required");
+      return null;
+    }
+
+    try {
+      const instance = new TableCellSuffixAppender(options);
+      console.log(
+        `TableCellSuffixAppender created for table: ${options.tableId}`,
+        instance.getStatus(),
+      );
+      return instance;
+    } catch (error) {
+      console.error("Failed to create TableCellSuffixAppender:", error);
+      return null;
+    }
+  };
+
+  /**
+   * 获取指定表格的实例
+   * @param {string} tableId - 表格ID
+   * @returns {TableCellSuffixAppender|null} 实例
+   */
+  window.getTableSuffixAppender = function (tableId) {
+    const container = document.getElementById(tableId);
+    if (container && container._tableSuffixAppender) {
+      return container._tableSuffixAppender;
+    }
+    return null;
+  };
+
+  // ============================================
+  // 自动初始化
+  // ============================================
+
+  // 如果DOM已经加载完成，立即执行自动初始化
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", window.autoInitTableSuffix);
+  } else {
+    // DOM已经加载完成，立即执行
+    setTimeout(window.autoInitTableSuffix, 0);
   }
 
-  // 在DOM加载完成后自动初始化
-  document.addEventListener("DOMContentLoaded", autoInitFromDataAttributes);
+  // ============================================
+  // 模块化支持
+  // ============================================
 
-  // 导出到全局作用域
-  window.TableCellSuffixAppender = TableCellSuffixAppender;
-  window.initTableSuffix = initTableSuffix;
-  window.autoInitTableSuffix = autoInitFromDataAttributes;
+  // UMD模式导出，支持CommonJS/AMD/全局变量
+  if (typeof define === "function" && define.amd) {
+    // AMD
+    define([], function () {
+      return TableCellSuffixAppender;
+    });
+  } else if (typeof module !== "undefined" && module.exports) {
+    // CommonJS
+    module.exports = TableCellSuffixAppender;
+    module.exports.initTableSuffix = window.initTableSuffix;
+    module.exports.autoInitTableSuffix = window.autoInitTableSuffix;
+    module.exports.createTableSuffixAppender = window.createTableSuffixAppender;
+    module.exports.getTableSuffixAppender = window.getTableSuffixAppender;
+  }
 })();
-
-// 保留对类构造函数的访问，与 Message.js 保持一致的模式
-if (typeof window !== "undefined" && !window.TableCellSuffixAppenderClass) {
-  window.TableCellSuffixAppenderClass = TableCellSuffixAppender;
-}
-
-// 如果需要像 Message 那样支持模块化导入也添加这种支持
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = TableCellSuffixAppender;
-}
