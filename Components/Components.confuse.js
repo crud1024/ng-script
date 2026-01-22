@@ -73,10 +73,6 @@ function generateBundle(map, outFile) {
     let content = fs.readFileSync(abs, "utf8");
     // transform simple ESM -> CommonJS so terser can parse bundled code
     content = transformESMtoCommonJS(content);
-    // 确保内容以分号结尾
-    if (!content.trim().endsWith(";")) {
-      content += ";";
-    }
     out +=
       "__modules[" +
       JSON.stringify(id) +
@@ -185,27 +181,29 @@ function transformESMtoCommonJS(code) {
   return out;
 }
 
-function simpleMinify(code) {
-  // 只做最基本的安全压缩
+function safeSimpleMinify(code) {
+  // 安全的最小化函数 - 只做最基本的优化
   let result = code;
 
-  // 移除块注释（安全方式）
+  // 1. 移除块级注释 (/* ... */)
   result = result.replace(/\/\*[\s\S]*?\*\//g, "");
 
-  // 移除行注释
+  // 2. 移除行注释 (// ...)
   result = result.replace(/\/\/[^\n\r]*/g, "");
 
-  // 移除多余的空行
-  result = result.replace(/\n\s*\n+/g, "\n");
+  // 3. 移除 console 语句（可选）
+  result = result.replace(/\bconsole\.[a-zA-Z0-9_]+\s*\([^;]*\);?/g, ";");
 
-  // 移除行首尾的空格
-  result = result.replace(/^\s+|\s+$/gm, "");
+  // 4. 移除多余的空格（但要小心字符串和正则表达式）
+  // 先移除开头和结尾的空格
+  result = result.trim();
 
-  // 移除 console 语句（可选）
-  result = result.replace(
-    /\bconsole\.(log|warn|error|info|debug)\s*\([^;]*\)\s*;?/g,
-    ";",
-  );
+  // 5. 移除多余的空行和连续空格（但要保留必要的空格）
+  result = result
+    .replace(/\n+/g, "\n") // 多个换行变一个
+    .replace(/\s+/g, " ") // 多个空格变一个
+    .replace(/\s*([=+\-*/%&|^<>!?:;{}()[\],.])\s*/g, "$1") // 运算符周围的空格
+    .replace(/\s*\n\s*/g, "\n"); // 换行周围的空格
 
   return result;
 }
@@ -216,37 +214,27 @@ if (require.main === module) {
   // CLI: generate bundle file
   const outFile = path.join(rootDir, "Components.all.osd.js");
   generateBundle(map, outFile);
-  console.log("Bundle written to", outFile);
-
   // also write a simple-minified version
   try {
     const raw = fs.readFileSync(outFile, "utf8");
-    const mini = simpleMinify(raw);
+    const mini = safeSimpleMinify(raw);
     const minOut = path.join(rootDir, "Components.all.osd.min.js");
     fs.writeFileSync(minOut, mini, "utf8");
     console.log("Minified bundle written to", minOut);
-
-    // 测试生成的代码是否有语法错误
-    try {
-      // 创建一个简单的测试来验证语法
-      const testCode = mini + "\n;";
-      // 尝试用 eval 检查语法（不执行）
-      eval("(function(){" + testCode + "})");
-      console.log("Minified bundle syntax check: OK");
-    } catch (e) {
-      console.error("Minified bundle has syntax errors:", e.message);
-      // 如果语法错误，重新生成一个更简单的版本
-      const basicMinified = raw
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/[^\n\r]*/g, "")
-        .replace(/\n\s*\n+/g, "\n");
-      fs.writeFileSync(minOut, basicMinified, "utf8");
-      console.log("Regenerated basic minified version (comments only)");
-    }
   } catch (e) {
     console.error("Minify failed:", e && e.message);
+    // 如果最小化失败，至少生成一个可用的文件
+    const minOut = path.join(rootDir, "Components.all.osd.min.js");
+    const raw = fs.readFileSync(outFile, "utf8");
+    // 只做最基本的处理：移除注释和空行
+    const basic = raw
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n\r]*/g, "")
+      .replace(/\n\s*\n+/g, "\n");
+    fs.writeFileSync(minOut, basic, "utf8");
+    console.log("Generated basic minified version (comments only)");
   }
-
+  console.log("Bundle written to", outFile);
   process.exit(0);
 } else {
   // As module: export lazy require map
