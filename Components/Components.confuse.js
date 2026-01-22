@@ -182,7 +182,7 @@ function transformESMtoCommonJS(code) {
 }
 
 function simpleMinify(code) {
-  // First remove comments using the original logic
+  // First remove comments and console logs using the original logic
   let out = "";
   let i = 0;
   const len = code.length;
@@ -200,7 +200,6 @@ function simpleMinify(code) {
     if (inLineComment) {
       if (ch === "\n") {
         inLineComment = false;
-        out += ch;
       }
       i++;
       prev = ch;
@@ -210,12 +209,9 @@ function simpleMinify(code) {
     if (inBlockComment) {
       if (ch === "*" && next === "/") {
         inBlockComment = false;
-        i += 2;
-        prev = "/";
-        continue;
       }
-      i++;
-      prev = ch;
+      i += 2;
+      prev = "/";
       continue;
     }
 
@@ -272,67 +268,16 @@ function simpleMinify(code) {
       continue;
     }
 
-    // Replace all whitespace sequences with a single space
-    if (/\s/.test(ch)) {
-      const last = out.length ? out[out.length - 1] : "";
-      if (!last || last !== " ") {
-        out += " ";
-      }
-      prev = ch;
-      i++;
-      continue;
-    }
-
     out += ch;
     prev = ch;
     i++;
   }
 
-  // Apply conservative minification that preserves JavaScript syntax
-  let minified = out;
+  // Remove all console statements
+  let minified = out.replace(/\bconsole\.[a-zA-Z0-9_]+\s*\([^;]*\);?/g, ';');
 
-  // Preserve spacing around certain keywords and constructs that are critical for JS
-  // But remove excessive whitespace
-  const patterns = [
-    // Preserve space after keywords that need it
-    { regex: /\b(if\s+\()/g, replacement: "if(" },
-    { regex: /\b(for\s+\()/g, replacement: "for(" },
-    { regex: /\b(while\s+\()/g, replacement: "while(" },
-    { regex: /\b(switch\s+\()/g, replacement: "switch(" },
-    { regex: /\b(with\s+\()/g, replacement: "with(" },
-    { regex: /\b(var|let|const)\s+/g, replacement: "$1 " },
-    { regex: /\b(return|yield|throw|await)\s+/g, replacement: "$1 " },
-    { regex: /\b(case|default)\s+/g, replacement: "$1 " },
-    { regex: /\b(else)\s*{/g, replacement: "else{" },
-    { regex: /\b(do)\s*{/g, replacement: "do{" },
-    { regex: /\b(try)\s*{/g, replacement: "try{" },
-    { regex: /\b(finally)\s*{/g, replacement: "finally{" },
-    { regex: /\b(else)\s+(if)\s*{/g, replacement: "elseif{" },
-
-    // Remove space around operators
-    { regex: /\s*([!=]==?)\s*/g, replacement: "$1" },
-    { regex: /\s*([<>])=?\s*/g, replacement: "$1" },
-    { regex: /\s*([&|])\s*/g, replacement: "$1" },
-    { regex: /\s*([+\-*/%])\s*/g, replacement: "$1" },
-    { regex: /\s*([?:])\s*/g, replacement: "$1" },
-    { regex: /\s*([,;])\s*/g, replacement: "$1" },
-    { regex: /\s*([{}[\]()])\s*/g, replacement: "$1" },
-
-    // Specific cleanup
-    { regex: /\s*([<>])=/g, replacement: "$1=" }, // <=, >=
-    { regex: /([!&|+\-*/=%<>?:])\s+/g, replacement: "$1" }, // operators followed by space
-    { regex: /\s+([!&|+\-*/=%<>?:])/g, replacement: "$1" }, // space followed by operators
-  ];
-
-  patterns.forEach((pattern) => {
-    minified = minified.replace(pattern.regex, pattern.replacement);
-  });
-
-  // Final cleanup - trim and replace multiple spaces with single space
+  // Replace all whitespace sequences (including newlines) with a single space
   minified = minified.replace(/\s+/g, " ").trim();
-
-  // Remove newlines but preserve semicolons where needed
-  minified = minified.replace(/[\r\n]+/g, " ");
 
   return minified;
 }
