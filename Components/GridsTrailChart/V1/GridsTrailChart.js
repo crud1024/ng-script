@@ -430,6 +430,10 @@ function safeInitTableCellSuffix(options) {
 
   return instance;
 }
+// 导出组件
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { TableCellSuffixAppender, safeInitTableCellSuffix };
+}
 // 导出到全局作用域
 if (typeof window !== "undefined") {
   window.TableCellSuffixAppender = TableCellSuffixAppender;
