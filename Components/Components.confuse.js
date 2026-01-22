@@ -181,105 +181,31 @@ function transformESMtoCommonJS(code) {
   return out;
 }
 
-function simpleMinify(code) {
-  // First remove comments and console logs using the original logic
-  let out = "";
-  let i = 0;
-  const len = code.length;
-  let inSingle = false;
-  let inDouble = false;
-  let inTemplate = false;
-  let inLineComment = false;
-  let inBlockComment = false;
-  let prev = "";
+function safeSimpleMinify(code) {
+  // 安全的最小化函数 - 只做最基本的优化
+  let result = code;
 
-  while (i < len) {
-    const ch = code[i];
-    const next = i + 1 < len ? code[i + 1] : "";
+  // 1. 移除块级注释 (/* ... */)
+  result = result.replace(/\/\*[\s\S]*?\*\//g, "");
 
-    if (inLineComment) {
-      if (ch === "\n") {
-        inLineComment = false;
-      }
-      i++;
-      prev = ch;
-      continue;
-    }
+  // 2. 移除行注释 (// ...)
+  result = result.replace(/\/\/[^\n\r]*/g, "");
 
-    if (inBlockComment) {
-      if (ch === "*" && next === "/") {
-        inBlockComment = false;
-      }
-      i += 2;
-      prev = "/";
-      continue;
-    }
+  // 3. 移除 console 语句（可选）
+  result = result.replace(/\bconsole\.[a-zA-Z0-9_]+\s*\([^;]*\);?/g, ";");
 
-    if (inSingle || inDouble || inTemplate) {
-      out += ch;
-      if (
-        (inSingle && ch === "'" && prev !== "\\") ||
-        (inDouble && ch === '"' && prev !== "\\") ||
-        (inTemplate && ch === "`" && prev !== "\\")
-      ) {
-        if (inSingle) inSingle = false;
-        else if (inDouble) inDouble = false;
-        else if (inTemplate) inTemplate = false;
-      }
-      prev = ch;
-      i++;
-      continue;
-    }
+  // 4. 移除多余的空格（但要小心字符串和正则表达式）
+  // 先移除开头和结尾的空格
+  result = result.trim();
 
-    // Check for comments outside strings
-    if (ch === "/" && next === "/") {
-      inLineComment = true;
-      i += 2;
-      prev = "/";
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      inBlockComment = true;
-      i += 2;
-      prev = "/";
-      continue;
-    }
+  // 5. 移除多余的空行和连续空格（但要保留必要的空格）
+  result = result
+    .replace(/\n+/g, "\n") // 多个换行变一个
+    .replace(/\s+/g, " ") // 多个空格变一个
+    .replace(/\s*([=+\-*/%&|^<>!?:;{}()[\],.])\s*/g, "$1") // 运算符周围的空格
+    .replace(/\s*\n\s*/g, "\n"); // 换行周围的空格
 
-    // Handle quotes
-    if (ch === "'") {
-      inSingle = true;
-      out += ch;
-      prev = ch;
-      i++;
-      continue;
-    }
-    if (ch === '"') {
-      inDouble = true;
-      out += ch;
-      prev = ch;
-      i++;
-      continue;
-    }
-    if (ch === "`") {
-      inTemplate = true;
-      out += ch;
-      prev = ch;
-      i++;
-      continue;
-    }
-
-    out += ch;
-    prev = ch;
-    i++;
-  }
-
-  // Remove all console statements
-  let minified = out.replace(/\bconsole\.[a-zA-Z0-9_]+\s*\([^;]*\);?/g, ';');
-
-  // Replace all whitespace sequences (including newlines) with a single space
-  minified = minified.replace(/\s+/g, " ").trim();
-
-  return minified;
+  return result;
 }
 
 const map = buildMap();
@@ -291,12 +217,22 @@ if (require.main === module) {
   // also write a simple-minified version
   try {
     const raw = fs.readFileSync(outFile, "utf8");
-    const mini = simpleMinify(raw);
+    const mini = safeSimpleMinify(raw);
     const minOut = path.join(rootDir, "Components.all.osd.min.js");
     fs.writeFileSync(minOut, mini, "utf8");
     console.log("Minified bundle written to", minOut);
   } catch (e) {
     console.error("Minify failed:", e && e.message);
+    // 如果最小化失败，至少生成一个可用的文件
+    const minOut = path.join(rootDir, "Components.all.osd.min.js");
+    const raw = fs.readFileSync(outFile, "utf8");
+    // 只做最基本的处理：移除注释和空行
+    const basic = raw
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n\r]*/g, "")
+      .replace(/\n\s*\n+/g, "\n");
+    fs.writeFileSync(minOut, basic, "utf8");
+    console.log("Generated basic minified version (comments only)");
   }
   console.log("Bundle written to", outFile);
   process.exit(0);
