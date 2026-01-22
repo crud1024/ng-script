@@ -288,24 +288,51 @@ function simpleMinify(code) {
     i++;
   }
 
-  // Now apply advanced minification techniques
+  // Apply conservative minification that preserves JavaScript syntax
   let minified = out;
 
-  // Remove unnecessary spaces around operators and delimiters
-  minified = minified
-    .replace(/\s*([{}[\]()=:;,<>+\-*/%|&^!~?])\s*/g, "$1") // Remove spaces around operators
-    .replace(/\s*([,;:])\s*/g, "$1") // Space after comma, semicolon, colon
-    .replace(/\s*([{}])\s*/g, "$1") // No space around braces
-    .replace(/\(\s+/g, "(") // No space after opening paren
-    .replace(/\s+\)/g, ")") // No space before closing paren
-    .replace(/\s*:\s*/g, ":") // No space around colon (ternary, object)
-    .replace(/\s*,\s*/g, ",") // No space around commas
-    .replace(/\s*;\s*/g, ";") // No extra spaces around semicolons
-    .replace(/\s+/g, " ") // Finally collapse any remaining multiple spaces
-    .trim();
+  // Preserve spacing around certain keywords and constructs that are critical for JS
+  // But remove excessive whitespace
+  const patterns = [
+    // Preserve space after keywords that need it
+    { regex: /\b(if\s+\()/g, replacement: "if(" },
+    { regex: /\b(for\s+\()/g, replacement: "for(" },
+    { regex: /\b(while\s+\()/g, replacement: "while(" },
+    { regex: /\b(switch\s+\()/g, replacement: "switch(" },
+    { regex: /\b(with\s+\()/g, replacement: "with(" },
+    { regex: /\b(var|let|const)\s+/g, replacement: "$1 " },
+    { regex: /\b(return|yield|throw|await)\s+/g, replacement: "$1 " },
+    { regex: /\b(case|default)\s+/g, replacement: "$1 " },
+    { regex: /\b(else)\s*{/g, replacement: "else{" },
+    { regex: /\b(do)\s*{/g, replacement: "do{" },
+    { regex: /\b(try)\s*{/g, replacement: "try{" },
+    { regex: /\b(finally)\s*{/g, replacement: "finally{" },
+    { regex: /\b(else)\s+(if)\s*{/g, replacement: "elseif{" },
 
-  // Remove newlines and carriage returns
-  minified = minified.replace(/[\r\n]+/g, "");
+    // Remove space around operators
+    { regex: /\s*([!=]==?)\s*/g, replacement: "$1" },
+    { regex: /\s*([<>])=?\s*/g, replacement: "$1" },
+    { regex: /\s*([&|])\s*/g, replacement: "$1" },
+    { regex: /\s*([+\-*/%])\s*/g, replacement: "$1" },
+    { regex: /\s*([?:])\s*/g, replacement: "$1" },
+    { regex: /\s*([,;])\s*/g, replacement: "$1" },
+    { regex: /\s*([{}[\]()])\s*/g, replacement: "$1" },
+
+    // Specific cleanup
+    { regex: /\s*([<>])=/g, replacement: "$1=" }, // <=, >=
+    { regex: /([!&|+\-*/=%<>?:])\s+/g, replacement: "$1" }, // operators followed by space
+    { regex: /\s+([!&|+\-*/=%<>?:])/g, replacement: "$1" }, // space followed by operators
+  ];
+
+  patterns.forEach((pattern) => {
+    minified = minified.replace(pattern.regex, pattern.replacement);
+  });
+
+  // Final cleanup - trim and replace multiple spaces with single space
+  minified = minified.replace(/\s+/g, " ").trim();
+
+  // Remove newlines but preserve semicolons where needed
+  minified = minified.replace(/[\r\n]+/g, " ");
 
   return minified;
 }
