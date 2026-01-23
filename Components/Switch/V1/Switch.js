@@ -373,7 +373,7 @@ class NgSwitch {
       const newElement = this.switchElement.cloneNode(true);
       this.switchElement.parentNode.replaceChild(
         newElement,
-        this.switchElement
+        this.switchElement,
       );
       this.switchElement = newElement;
     } else {
@@ -467,4 +467,10 @@ function initSwitchesBySelector(selector, options = {}) {
   });
 
   return switches;
+}
+if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
+  module.exports = { NgSwitch, initSwitchesBySelector };
+} else {
+  window.NgSwitch = NgSwitch;
+  window.initSwitchesBySelector = initSwitchesBySelector;
 }

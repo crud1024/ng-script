@@ -561,3 +561,38 @@ TableAmountSuffix 组件通过以下方式工作：
 - **小型表格（< 100 行）**：可以使用默认配置
 - **中型表格（100-1000 行）**：建议增加防抖时间
 - **大型表格（> 1000 行）**：建议禁用独立元素模式
+  // // 初始化示例
+  // const suffixAppender = safeInitTableCellSuffix({
+  // tableId: 'p_form_multi_calc_compare_d',
+  // fieldSuffixMap: {
+  // 'u_pro_bugget_amt': {
+  // suffix: '元',
+  // style: { color: '#1890ff' }
+  // },
+  // 'u_pro_demand_plan_amt': {
+  // suffix: '元',
+  // style: { color: '#1890ff' }
+  // },
+  // 'u_pro_expend_amt': {
+  // suffix: '元',
+  // style: { color: '#1890ff' }
+  // },
+  // 'u_business_caliber_amt': {
+  // suffix: '元',
+  // style: { color: '#1890ff' }
+  // },
+  // 'u_entry_caliber_amt': {
+  // suffix: '元',
+  // style: { color: '#1890ff' }
+  // },
+  // 'u_pay_caliber_amt': {
+  // suffix: '元',
+  // style: { color: '#1890ff' }
+  // }
+  // },
+  // style: {
+  // color: '#1890ff',
+  // fontSize: '12px',
+  // marginLeft: '2px'
+  // }
+  // });

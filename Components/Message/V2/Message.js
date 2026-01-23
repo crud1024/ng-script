@@ -246,7 +246,7 @@ class Message {
     const path = document.createElementNS(svgNS, "path");
     path.setAttribute(
       "d",
-      "M410.5 106h203C780 106 915.3 239.6 918 405.5v412.3c0 54.8-44 99.3-98.5 100.2h-409C244 918 108.7 784.4 106 618.5v-208C106 244 239.6 108.7 405.5 106h208-203z m203 62.5h-203c-132.3 0-239.9 106.2-242 238v207c0 132.3 106.2 239.9 238 242h411.3c20.6 0 37.4-16.6 37.7-37.1V410.5c0-133.7-108.3-242-242-242z m58.2 410.2c19.9 0 36 16.1 36 36s-16.1 36-36 36H354.5c-19.9 0-36-16.1-36-36s16.1-36 36-36h317.2zM360.4 406.5h172.7c19.9 0 36 16.1 36 36 0 19.7-15.8 35.7-35.4 36H360.4c-19.9 0-36-16.1-36-36 0-19.7 15.8-35.7 35.4-36H533.1 360.4z"
+      "M410.5 106h203C780 106 915.3 239.6 918 405.5v412.3c0 54.8-44 99.3-98.5 100.2h-409C244 918 108.7 784.4 106 618.5v-208C106 244 239.6 108.7 405.5 106h208-203z m203 62.5h-203c-132.3 0-239.9 106.2-242 238v207c0 132.3 106.2 239.9 238 242h411.3c20.6 0 37.4-16.6 37.7-37.1V410.5c0-133.7-108.3-242-242-242z m58.2 410.2c19.9 0 36 16.1 36 36s-16.1 36-36 36H354.5c-19.9 0-36-16.1-36-36s16.1-36 36-36h317.2zM360.4 406.5h172.7c19.9 0 36 16.1 36 36 0 19.7-15.8 35.7-35.4 36H360.4c-19.9 0-36-16.1-36-36 0-19.7 15.8-35.7 35.4-36H533.1 360.4z",
     );
     path.setAttribute("fill", fillColor);
 
@@ -337,7 +337,7 @@ class Message {
         messageId,
         mergedConfig.position,
         mergedConfig.hideDirection,
-        mergedConfig.onClose
+        mergedConfig.onClose,
       );
 
     // 进度条
@@ -396,7 +396,7 @@ class Message {
           messageId,
           mergedConfig.position,
           mergedConfig.hideDirection,
-          mergedConfig.onClose
+          mergedConfig.onClose,
         );
       }, mergedConfig.duration * 1000);
     }
@@ -525,7 +525,3 @@ if (typeof window !== "undefined" && !window.Message) {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = Message;
 }
-
-// 使用示例（在需要的时候调用，不要在这里立即执行）
-// Message.info('普通消息');
-// Message.success('成功消息');

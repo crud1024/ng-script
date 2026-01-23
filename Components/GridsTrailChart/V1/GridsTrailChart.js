@@ -439,39 +439,3 @@ if (typeof window !== "undefined") {
   window.TableCellSuffixAppender = TableCellSuffixAppender;
   window.safeInitTableCellSuffix = safeInitTableCellSuffix;
 }
-
-// // 初始化示例
-// const suffixAppender = safeInitTableCellSuffix({
-//     tableId: 'p_form_multi_calc_compare_d',
-//     fieldSuffixMap: {
-//         'u_pro_bugget_amt': {
-//             suffix: '元',
-//             style: { color: '#1890ff' }
-//         },
-//         'u_pro_demand_plan_amt': {
-//             suffix: '元',
-//             style: { color: '#1890ff' }
-//         },
-//         'u_pro_expend_amt': {
-//             suffix: '元',
-//             style: { color: '#1890ff' }
-//         },
-//         'u_business_caliber_amt': {
-//             suffix: '元',
-//             style: { color: '#1890ff' }
-//         },
-//         'u_entry_caliber_amt': {
-//             suffix: '元',
-//             style: { color: '#1890ff' }
-//         },
-//         'u_pay_caliber_amt': {
-//             suffix: '元',
-//             style: { color: '#1890ff' }
-//         }
-//     },
-//     style: {
-//         color: '#1890ff',
-//         fontSize: '12px',
-//         marginLeft: '2px'
-//     }
-// });

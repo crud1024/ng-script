@@ -70,3 +70,19 @@ Message.show({
 ---
 
 如果你希望我把文档补充为英文版、增加图示，或把组件 API（事件回调、返回值）展开为更详细的参考，我可以继续完善。
+
+// // 快捷方法
+// Message.info('普通消息');
+// Message.success('成功消息');
+// Message.error('错误消息');
+// Message.warning('警告消息');
+// Message.important('重要消息');
+
+// // 完整配置
+// Message.show({
+// type: 'success',
+// content: '操作成功',
+// duration: 5,
+// position: 'center-top',
+// hideDirection: 'up'
+// });

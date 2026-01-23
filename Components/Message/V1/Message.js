@@ -293,7 +293,7 @@ class Message {
         messageId,
         mergedConfig.position,
         mergedConfig.hideDirection,
-        mergedConfig.onClose
+        mergedConfig.onClose,
       );
 
     // 进度条
@@ -352,7 +352,7 @@ class Message {
           messageId,
           mergedConfig.position,
           mergedConfig.hideDirection,
-          mergedConfig.onClose
+          mergedConfig.onClose,
         );
       }, mergedConfig.duration * 1000);
     }
@@ -481,19 +481,3 @@ if (typeof window !== "undefined" && !window.Message) {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = Message;
 }
-
-// // 快捷方法
-// Message.info('普通消息');
-// Message.success('成功消息');
-// Message.error('错误消息');
-// Message.warning('警告消息');
-// Message.important('重要消息');
-
-// // 完整配置
-// Message.show({
-//     type: 'success',
-//     content: '操作成功',
-//     duration: 5,
-//     position: 'center-top',
-//     hideDirection: 'up'
-// });
