@@ -16657,7 +16657,7 @@ function createTreeExpandPanel(options = {}) {
       }
 
       const elements = container.querySelectorAll(
-        ".udp-row-expand-icon.udp-row-expand-icon-expanded"
+        ".udp-row-expand-icon.udp-row-expand-icon-expanded",
       );
       if (elements.length > 0) {
         console.log(`找到 ${elements.length} 个展开元素，正在收起...`);
@@ -16682,16 +16682,16 @@ function createTreeExpandPanel(options = {}) {
       }
 
       const elements = container.querySelectorAll(
-        ".udp-row-expand-icon.udp-row-expand-icon-collapsed"
+        ".udp-row-expand-icon.udp-row-expand-icon-collapsed",
       );
       if (elements.length > 0) {
         console.log(
-          `展开第 ${currentLevel + 1} 层，找到 ${elements.length} 个元素`
+          `展开第 ${currentLevel + 1} 层，找到 ${elements.length} 个元素`,
         );
         elements.forEach((el) => el.click());
         setTimeout(
           () => startLevelExpansion(currentLevel + 1),
-          config.animationDelay
+          config.animationDelay,
         );
       } else {
         console.log(`第 ${currentLevel + 1} 层无更多可展开元素，提前终止`);
@@ -16709,7 +16709,7 @@ function createTreeExpandPanel(options = {}) {
     }
 
     const elements = container.querySelectorAll(
-      ".udp-row-expand-icon.udp-row-expand-icon-collapsed"
+      ".udp-row-expand-icon.udp-row-expand-icon-collapsed",
     );
     if (elements.length > 0) {
       console.log(`找到 ${elements.length} 个折叠元素，正在展开...`);
@@ -16728,7 +16728,7 @@ function createTreeExpandPanel(options = {}) {
     }
 
     const elements = container.querySelectorAll(
-      ".udp-row-expand-icon.udp-row-expand-icon-expanded"
+      ".udp-row-expand-icon.udp-row-expand-icon-expanded",
     );
     if (elements.length > 0) {
       console.log(`找到 ${elements.length} 个展开元素，正在收起...`);
@@ -16865,7 +16865,7 @@ function createTreeExpandPanel(options = {}) {
       `level-btn-${i}`,
       i.toString(),
       (i - 1) * 40,
-      i
+      i,
     );
     buttons.push(button);
     panelBody.appendChild(button);
@@ -16970,7 +16970,7 @@ function createTreeExpandPanel(options = {}) {
     const level = parseInt(inputValue);
     if (level < config.defaultLevels + 1 || level > config.maxCustomLevel) {
       showToast(
-        `请输入${config.defaultLevels + 1}到${config.maxCustomLevel}之间的数字`
+        `请输入${config.defaultLevels + 1}到${config.maxCustomLevel}之间的数字`,
       );
       return;
     }
@@ -17046,7 +17046,7 @@ function createTreeExpandPanel(options = {}) {
   // 根据默认状态配置初始化
   function initializeDefaultState() {
     console.log(
-      `初始化默认状态: ${config.defaultState}, 层级: ${config.defaultLevel}`
+      `初始化默认状态: ${config.defaultState}, 层级: ${config.defaultLevel}`,
     );
 
     switch (config.defaultState) {
@@ -17175,24 +17175,24 @@ class NGTreeExpandPanel {
     if (this.instance) {
       this.instance.destroy();
     }
-    
+
     // 合并新选项
     this.options = { ...this.options, ...newOptions };
-    
+
     // 重建实例
     this.instance = createTreeExpandPanel(this.options);
   }
 
   // 设置状态
   setState(state, level) {
-    if (this.instance && typeof this.instance.setState === 'function') {
+    if (this.instance && typeof this.instance.setState === "function") {
       this.instance.setState(state, level);
     }
   }
 
   // 销毁组件
   destroy() {
-    if (this.instance && typeof this.instance.destroy === 'function') {
+    if (this.instance && typeof this.instance.destroy === "function") {
       this.instance.destroy();
     }
   }
@@ -17201,42 +17201,43 @@ class NGTreeExpandPanel {
 // 示例用法
 const NGTreeExpandPanelExample = {
   // 基础示例
-  basic: function(options = {}) {
+  basic: function (options = {}) {
     const defaultOptions = {
       defaultLevels: 5,
       toolbarSelector: "div.udp-panel-title#_rq_",
       containerSelector: ".row-hover.rows-container.editable",
-      defaultState: "expanded"
+      defaultState: "expanded",
     };
-    
+
     return new NGTreeExpandPanel({ ...defaultOptions, ...options });
   },
 
   // 自定义层级数示例
-  customLevels: function(options = {}) {
+  customLevels: function (options = {}) {
     const defaultOptions = {
       defaultLevels: 7,
       maxCustomLevel: 30,
       toolbarSelector: "div.udp-panel-title#_rq_",
       containerSelector: ".row-hover.rows-container.editable",
       defaultState: "level",
-      defaultLevel: 2
+      defaultLevel: 2,
     };
-    
+
     return new NGTreeExpandPanel({ ...defaultOptions, ...options });
   },
 
   // 自定义选择器示例
-  customSelectors: function(toolbarSelector, containerSelector, options = {}) {
+  customSelectors: function (toolbarSelector, containerSelector, options = {}) {
     const defaultOptions = {
       defaultLevels: 5,
       toolbarSelector: toolbarSelector || "div.udp-panel-title#_rq_",
-      containerSelector: containerSelector || ".row-hover.rows-container.editable",
-      defaultState: "collapsed"
+      containerSelector:
+        containerSelector || ".row-hover.rows-container.editable",
+      defaultState: "collapsed",
     };
-    
+
     return new NGTreeExpandPanel({ ...defaultOptions, ...options });
-  }
+  },
 };
 
 // 导出组件
@@ -17244,10 +17245,14 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = { NGTreeExpandPanel, NGTreeExpandPanelExample };
 }
 
+// 确保组件正确暴露到全局window对象
 if (typeof window !== "undefined") {
   window.NGTreeExpandPanel = NGTreeExpandPanel;
   window.NGTreeExpandPanelExample = NGTreeExpandPanelExample;
+  // 同时也确保createTreeExpandPanel函数可用
+  window.createTreeExpandPanel = createTreeExpandPanel;
 }
+
 };
 
 var __cache = {};
