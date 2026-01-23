@@ -544,3 +544,109 @@ function showToast(message) {
   // 这里可以添加更美观的提示方式，比如使用浏览器原生alert或自定义弹窗
   alert(message);
 }
+
+// NGTreeExpandPanel 类封装
+class NGTreeExpandPanel {
+  constructor(options = {}) {
+    this.options = {
+      defaultLevels: 5,
+      maxCustomLevel: 25,
+      toolbarSelector: "div.udp-panel-title#_rq_",
+      containerSelector: ".row-hover.rows-container.editable",
+      animationDelay: 100,
+      position: {
+        index: 0,
+        side: "after",
+      },
+      margin: {
+        left: "0 1% 0 1%",
+        right: "",
+      },
+      defaultState: "expanded", // 'collapsed', 'level', 'expanded'
+      defaultLevel: 1,
+      ...options,
+    };
+
+    // 初始化组件
+    this.instance = createTreeExpandPanel(this.options);
+  }
+
+  // 更新配置
+  updateOptions(newOptions) {
+    // 销毁当前实例
+    if (this.instance) {
+      this.instance.destroy();
+    }
+    
+    // 合并新选项
+    this.options = { ...this.options, ...newOptions };
+    
+    // 重建实例
+    this.instance = createTreeExpandPanel(this.options);
+  }
+
+  // 设置状态
+  setState(state, level) {
+    if (this.instance && typeof this.instance.setState === 'function') {
+      this.instance.setState(state, level);
+    }
+  }
+
+  // 销毁组件
+  destroy() {
+    if (this.instance && typeof this.instance.destroy === 'function') {
+      this.instance.destroy();
+    }
+  }
+}
+
+// 示例用法
+const NGTreeExpandPanelExample = {
+  // 基础示例
+  basic: function(options = {}) {
+    const defaultOptions = {
+      defaultLevels: 5,
+      toolbarSelector: "div.udp-panel-title#_rq_",
+      containerSelector: ".row-hover.rows-container.editable",
+      defaultState: "expanded"
+    };
+    
+    return new NGTreeExpandPanel({ ...defaultOptions, ...options });
+  },
+
+  // 自定义层级数示例
+  customLevels: function(options = {}) {
+    const defaultOptions = {
+      defaultLevels: 7,
+      maxCustomLevel: 30,
+      toolbarSelector: "div.udp-panel-title#_rq_",
+      containerSelector: ".row-hover.rows-container.editable",
+      defaultState: "level",
+      defaultLevel: 2
+    };
+    
+    return new NGTreeExpandPanel({ ...defaultOptions, ...options });
+  },
+
+  // 自定义选择器示例
+  customSelectors: function(toolbarSelector, containerSelector, options = {}) {
+    const defaultOptions = {
+      defaultLevels: 5,
+      toolbarSelector: toolbarSelector || "div.udp-panel-title#_rq_",
+      containerSelector: containerSelector || ".row-hover.rows-container.editable",
+      defaultState: "collapsed"
+    };
+    
+    return new NGTreeExpandPanel({ ...defaultOptions, ...options });
+  }
+};
+
+// 导出组件
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { NGTreeExpandPanel, NGTreeExpandPanelExample };
+}
+
+if (typeof window !== "undefined") {
+  window.NGTreeExpandPanel = NGTreeExpandPanel;
+  window.NGTreeExpandPanelExample = NGTreeExpandPanelExample;
+}
