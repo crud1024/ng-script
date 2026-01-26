@@ -89,9 +89,27 @@ function generateBundle(map, outFile) {
 
   for (const id of Object.values(map)) {
     const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
+    
+    // Extract component name from the path to create proper OSD key
+    // Example: ButtonGroup/V1/ButtonGroup -> V1BUTTONGROUPV1
+    const pathParts = key.split('/');
+    const componentName = pathParts[0];  // Get component name (e.g., ButtonGroup)
+    const version = pathParts[1];        // Get version (e.g., V1)
+    const subComponent = pathParts.slice(2).join(''); // Get subcomponent if exists (e.g., ButtonGroup for Message/V2/Message)
+    const osdKey = 'V1' + componentName.toUpperCase() + (subComponent ? version.toUpperCase() + subComponent.toUpperCase() : '');
+    
     out +=
       "G.NG.Components[" +
       JSON.stringify(key) +
+      "] = __require(" +
+      JSON.stringify(id) +
+      ");\n";
+      
+    // Add component to OSD namespace with V1 prefix and uppercase name
+    out +=
+      "G.OSD = G.OSD || {};\n" +
+      "G.OSD[" +
+      JSON.stringify(osdKey) +
       "] = __require(" +
       JSON.stringify(id) +
       ");\n";
