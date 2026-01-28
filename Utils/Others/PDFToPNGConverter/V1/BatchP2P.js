@@ -238,7 +238,7 @@ class BatchPDFToPNGConverter {
    * 显示结果
    */
   showResult() {
-    const resultText = `转换完成！成功: ${this.successCount}个，失败: ${this.failCount}个`;
+    const resultText = `下载完成！成功: ${this.successCount}个，失败: ${this.failCount}个`;
     console.log(resultText);
 
     // 显示结果通知
@@ -254,7 +254,7 @@ class BatchPDFToPNGConverter {
     console.error("错误:", message);
 
     if (typeof $NG !== "undefined" && $NG.message) {
-      $NG.message("转换失败: " + message, "error");
+      $NG.message("下载失败: " + message, "error");
     }
   }
 }
