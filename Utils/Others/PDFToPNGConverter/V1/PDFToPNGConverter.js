@@ -1,19 +1,23 @@
 /**
- * PDF转PNG下载器 - 面向对象封装
+ * PDF转PNG下载器 - 面向对象封装（支持Blob/URL/File多种输入）
  */
 class PDFToPNGConverter {
   /**
    * 构造函数
    * @param {Object} options 配置选项
-   * @param {string} options.pdfUrl PDF文件URL（可选）
+   * @param {string|Blob|File|ArrayBuffer} options.pdfSource PDF数据源（URL、Blob、File或ArrayBuffer）
+   * @param {string} options.filename 文件名（可选）
    * @param {number} options.scale 缩放比例，默认2.0
    * @param {boolean} options.autoInit 是否自动初始化，默认true
+   * @param {boolean} options.skipValidation 是否跳过文件类型验证，默认false
    */
   constructor(options = {}) {
     this.options = {
-      pdfUrl: options.pdfUrl || "",
+      pdfSource: options.pdfSource || "",
+      filename: options.filename || "",
       scale: options.scale || 2.0,
       autoInit: options.autoInit !== false,
+      skipValidation: options.skipValidation || false,
       ...options,
     };
 
@@ -30,9 +34,9 @@ class PDFToPNGConverter {
    * 初始化
    */
   init() {
-    if (this.options.pdfUrl) {
-      // 如果有URL，直接加载并转换
-      this.loadPDFFromUrl(this.options.pdfUrl);
+    if (this.options.pdfSource) {
+      // 如果有数据源，直接处理
+      this.processPDFSource(this.options.pdfSource, this.options.filename);
     } else {
       // 创建文件选择界面
       this.createFileSelector();
@@ -113,6 +117,126 @@ class PDFToPNGConverter {
   }
 
   /**
+   * 处理PDF数据源
+   * @param {string|Blob|File|ArrayBuffer} source PDF数据源
+   * @param {string} filename 文件名
+   */
+  async processPDFSource(source, filename = "") {
+    try {
+      // 确保PDF.js已加载
+      if (!this.pdfLibLoaded) {
+        await this.loadPDFJS();
+      }
+
+      this.showLoading("正在处理PDF文件...");
+
+      let data;
+      let finalFilename = filename;
+
+      // 根据不同的数据源类型进行处理
+      if (typeof source === "string") {
+        // URL或base64字符串
+        if (source.startsWith("http://") || source.startsWith("https://")) {
+          // URL
+          if (!this.options.skipValidation && !this.validatePDFUrl(source)) {
+            console.error("请提供有效的PDF文件URL");
+            this.hideLoading();
+            return;
+          }
+          await this.convertPDFFromUrl(source, filename);
+          return;
+        } else if (source.startsWith("data:application/pdf")) {
+          // base64数据URL
+          data = this.dataURLToArrayBuffer(source);
+        } else if (source.startsWith("blob:")) {
+          // Blob URL
+          const blob = await this.fetchBlobFromBlobURL(source);
+          data = await this.blobToArrayBuffer(blob);
+          finalFilename =
+            finalFilename || this.extractFilenameFromBlobURL(source);
+        }
+      } else if (source instanceof Blob || source instanceof File) {
+        // Blob或File对象
+        if (!this.options.skipValidation && !this.validateFileType(source)) {
+          console.error("请提供有效的PDF文件");
+          this.hideLoading();
+          return;
+        }
+        data = await this.blobToArrayBuffer(source);
+        finalFilename = finalFilename || source.name || "document.pdf";
+      } else if (source instanceof ArrayBuffer) {
+        // ArrayBuffer
+        data = source;
+      } else {
+        throw new Error("不支持的数据源类型");
+      }
+
+      // 转换PDF
+      if (data) {
+        await this.convertPDF(data, finalFilename);
+      }
+    } catch (error) {
+      console.error("PDF处理失败:", error);
+      this.hideLoading();
+      throw error;
+    }
+  }
+
+  /**
+   * 从Blob URL获取Blob对象
+   * @param {string} blobURL Blob URL
+   * @returns {Promise<Blob>} Blob对象
+   */
+  async fetchBlobFromBlobURL(blobURL) {
+    const response = await fetch(blobURL);
+    if (!response.ok) {
+      throw new Error(
+        `无法获取Blob数据: ${response.status} ${response.statusText}`,
+      );
+    }
+    return await response.blob();
+  }
+
+  /**
+   * Blob转ArrayBuffer
+   * @param {Blob} blob Blob对象
+   * @returns {Promise<ArrayBuffer>} ArrayBuffer
+   */
+  blobToArrayBuffer(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("Blob读取失败"));
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+
+  /**
+   * DataURL转ArrayBuffer
+   * @param {string} dataURL base64数据URL
+   * @returns {ArrayBuffer} ArrayBuffer
+   */
+  dataURLToArrayBuffer(dataURL) {
+    const base64 = dataURL.split(",")[1];
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  /**
+   * 从Blob URL提取文件名
+   * @param {string} blobURL Blob URL
+   * @returns {string} 文件名
+   */
+  extractFilenameFromBlobURL(blobURL) {
+    // Blob URL无法直接获取文件名，返回默认值
+    return "document.pdf";
+  }
+
+  /**
    * 创建文件选择器界面
    */
   createFileSelector() {
@@ -148,34 +272,26 @@ class PDFToPNGConverter {
   /**
    * 从URL加载PDF
    * @param {string} pdfUrl PDF文件URL
+   * @param {string} filename 文件名
    */
-  async loadPDFFromUrl(pdfUrl) {
-    // 验证URL
-    if (!pdfUrl) {
-      console.error("PDF URL不能为空");
-      return;
-    }
-
-    // 验证文件类型
-    if (!this.validatePDFUrl(pdfUrl)) {
-      console.error("请提供有效的PDF文件URL");
-      return;
-    }
-
+  async convertPDFFromUrl(pdfUrl, filename = "") {
     try {
-      // 确保PDF.js已加载
-      if (!this.pdfLibLoaded) {
-        await this.loadPDFJS();
-      }
+      // 加载PDF文档
+      const loadingTask = window.pdfjsLib.getDocument(pdfUrl);
+      const pdf = await loadingTask.promise;
 
-      this.showLoading("正在加载PDF文件...");
+      // 获取文件名
+      const finalFilename =
+        filename || this.extractFilenameFromUrl(pdfUrl) || "document";
 
-      // 加载PDF
-      await this.convertPDFFromUrl(pdfUrl);
-    } catch (error) {
-      console.error("PDF加载失败:", error);
+      // 转换PDF
+      await this.convertPDFPages(pdf, finalFilename);
+
       this.hideLoading();
-      alert("PDF加载失败: " + error.message);
+      console.log(`PDF转换完成！共转换了 ${pdf.numPages} 页。`);
+    } catch (error) {
+      this.hideLoading();
+      throw error;
     }
   }
 
@@ -191,7 +307,17 @@ class PDFToPNGConverter {
       url.toLowerCase().includes(ext),
     );
 
-    // 也可以检查Content-Type，但这需要服务器响应
+    // 如果URL包含download、downLoad等关键字，可能是下载接口，允许通过
+    const isDownloadAPI =
+      url.toLowerCase().includes("download") ||
+      url.toLowerCase().includes("downloadfile");
+
+    // 对于API接口，不强制要求PDF扩展名
+    if (isDownloadAPI) {
+      return true;
+    }
+
+    // 对于普通URL，检查扩展名或Content-Type
     return hasPdfExtension || url.includes("application/pdf");
   }
 
@@ -202,12 +328,6 @@ class PDFToPNGConverter {
   async handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
-
-    // 验证文件类型
-    if (!this.validateFileType(file)) {
-      console.error("请选择PDF文件");
-      return;
-    }
 
     try {
       // 确保PDF.js已加载
@@ -228,16 +348,20 @@ class PDFToPNGConverter {
 
   /**
    * 验证文件类型
-   * @param {File} file 文件对象
+   * @param {File|Blob} file 文件对象
    * @returns {boolean} 是否有效
    */
   validateFileType(file) {
-    const isValid =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
+    // 对于Blob对象，可能没有type属性
+    if (!file.type) {
+      console.warn("文件类型未知，跳过验证");
+      return true;
+    }
+
+    const isValid = file.type === "application/pdf";
 
     if (!isValid) {
-      console.error(`无效的文件类型: ${file.type}, 文件名: ${file.name}`);
+      console.error(`无效的文件类型: ${file.type}`);
     }
 
     return isValid;
@@ -270,41 +394,38 @@ class PDFToPNGConverter {
   }
 
   /**
-   * 从URL转换PDF
-   * @param {string} pdfUrl PDF文件URL
-   */
-  async convertPDFFromUrl(pdfUrl) {
-    try {
-      // 加载PDF文档
-      const loadingTask = window.pdfjsLib.getDocument(pdfUrl);
-      const pdf = await loadingTask.promise;
-
-      // 获取文件名
-      const filename = this.extractFilenameFromUrl(pdfUrl) || "document";
-
-      // 转换PDF
-      await this.convertPDFPages(pdf, filename);
-
-      this.hideLoading();
-      alert(`PDF转换完成！共转换了 ${pdf.numPages} 页。`);
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  /**
    * 从URL提取文件名
    * @param {string} url 文件URL
    * @returns {string} 文件名
    */
   extractFilenameFromUrl(url) {
     try {
+      // 尝试解析URL
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
-      const filename = pathname.substring(pathname.lastIndexOf("/") + 1);
-      return filename || "document";
+
+      // 从路径中提取文件名
+      let filename = pathname.substring(pathname.lastIndexOf("/") + 1);
+
+      // 如果没有文件名或文件名不合适，尝试从查询参数中获取
+      if (!filename || filename.includes("?")) {
+        const params = new URLSearchParams(urlObj.search);
+        filename =
+          params.get("fileName") ||
+          params.get("filename") ||
+          params.get("file") ||
+          "document";
+      }
+
+      // 确保有.pdf扩展名
+      if (!filename.toLowerCase().endsWith(".pdf")) {
+        filename += ".pdf";
+      }
+
+      return filename;
     } catch (error) {
-      return "document";
+      // 如果不是有效URL，返回默认值
+      return "document.pdf";
     }
   }
 
@@ -328,7 +449,9 @@ class PDFToPNGConverter {
       }
 
       this.hideLoading();
+      console.log(`PDF转换完成！共转换了 ${pdf.numPages} 页。`);
     } catch (error) {
+      this.hideLoading();
       throw error;
     }
   }
@@ -545,18 +668,28 @@ if (typeof window !== "undefined") {
   window.PDFToPNGConverter = PDFToPNGConverter;
 }
 
-// 使用示例
-// 1. 使用URL初始化
+// 使用方法
+// 1. 支持Blob对象
 // const converter1 = new PDFToPNGConverter({
-//     pdfUrl: 'https://example.com/document.pdf'
+//     pdfSource: blobObject,
+//     filename: '资质证书.pdf'
 // });
 
-// 2. 使用文件选择初始化
-// const converter2 = new PDFToPNGConverter();
+// 2. 支持Blob URL
+// const converter2 = new PDFToPNGConverter({
+//     pdfSource: 'blob:http://localhost:3000/xxx-xxx-xxx',
+//     filename: '资质证书.pdf'
+// });
 
-// 3. 手动加载PDF
-// const converter3 = new PDFToPNGConverter({ autoInit: false });
-// converter3.loadPDFFromUrl('https://example.com/document.pdf');
+// 3. 支持普通URL（跳过验证）
+// const converter3 = new PDFToPNGConverter({
+//     pdfSource: downloadUrl,
+//     filename: '资质证书.pdf',
+//     skipValidation: true  // 跳过URL验证
+// });
 
-// 4. 销毁实例
-// converter.destroy();
+// 4. 支持ArrayBuffer
+// const converter4 = new PDFToPNGConverter({
+//     pdfSource: arrayBuffer,
+//     filename: '资质证书.pdf'
+// });
