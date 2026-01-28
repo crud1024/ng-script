@@ -1,5 +1,6 @@
 /**
- * PDF转PNG下载器 - 面向对象封装（支持Blob/URL/File多种输入）
+ * PDF转PNG下载器 - 无界面自动转换版本
+ * 支持Blob/URL/File/ArrayBuffer多种输入，自动转换并下载
  */
 class PDFToPNGConverter {
   /**
@@ -8,38 +9,68 @@ class PDFToPNGConverter {
    * @param {string|Blob|File|ArrayBuffer} options.pdfSource PDF数据源（URL、Blob、File或ArrayBuffer）
    * @param {string} options.filename 文件名（可选）
    * @param {number} options.scale 缩放比例，默认2.0
-   * @param {boolean} options.autoInit 是否自动初始化，默认true
    * @param {boolean} options.skipValidation 是否跳过文件类型验证，默认false
+   * @param {boolean} options.autoStart 是否自动开始转换，默认true
+   * @param {Function} options.onComplete 转换完成回调
+   * @param {Function} options.onError 转换错误回调
    */
   constructor(options = {}) {
     this.options = {
       pdfSource: options.pdfSource || "",
       filename: options.filename || "",
       scale: options.scale || 2.0,
-      autoInit: options.autoInit !== false,
       skipValidation: options.skipValidation || false,
+      autoStart: options.autoStart !== false,
+      onComplete: options.onComplete || null,
+      onError: options.onError || null,
       ...options,
     };
 
     this.pdfLibLoaded = false;
-    this.fileInput = null;
-    this.triggerButton = null;
+    this.isProcessing = false;
 
-    if (this.options.autoInit) {
-      this.init();
+    if (this.options.autoStart && this.options.pdfSource) {
+      this.startConversion();
     }
   }
 
   /**
-   * 初始化
+   * 开始转换
    */
-  init() {
-    if (this.options.pdfSource) {
-      // 如果有数据源，直接处理
-      this.processPDFSource(this.options.pdfSource, this.options.filename);
-    } else {
-      // 创建文件选择界面
-      this.createFileSelector();
+  async startConversion() {
+    if (this.isProcessing) {
+      console.warn("转换正在进行中，请等待完成");
+      return;
+    }
+
+    this.isProcessing = true;
+
+    try {
+      if (!this.options.pdfSource) {
+        throw new Error("未提供PDF数据源");
+      }
+
+      await this.processPDFSource(
+        this.options.pdfSource,
+        this.options.filename,
+      );
+
+      // 调用完成回调
+      if (typeof this.options.onComplete === "function") {
+        this.options.onComplete();
+      }
+    } catch (error) {
+      console.error("PDF转换失败:", error);
+
+      // 调用错误回调
+      if (typeof this.options.onError === "function") {
+        this.options.onError(error);
+      } else {
+        // 默认错误处理
+        this.showErrorToast(error.message);
+      }
+    } finally {
+      this.isProcessing = false;
     }
   }
 
@@ -88,7 +119,7 @@ class PDFToPNGConverter {
    * 加载PDF.js库
    * @returns {Promise} Promise对象
    */
-  loadPDFJS() {
+  async loadPDFJS() {
     return new Promise((resolve, reject) => {
       if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
         this.pdfLibLoaded = true;
@@ -122,64 +153,59 @@ class PDFToPNGConverter {
    * @param {string} filename 文件名
    */
   async processPDFSource(source, filename = "") {
-    try {
-      // 确保PDF.js已加载
-      if (!this.pdfLibLoaded) {
-        await this.loadPDFJS();
-      }
-
-      this.showLoading("正在处理PDF文件...");
-
-      let data;
-      let finalFilename = filename;
-
-      // 根据不同的数据源类型进行处理
-      if (typeof source === "string") {
-        // URL或base64字符串
-        if (source.startsWith("http://") || source.startsWith("https://")) {
-          // URL
-          if (!this.options.skipValidation && !this.validatePDFUrl(source)) {
-            console.error("请提供有效的PDF文件URL");
-            this.hideLoading();
-            return;
-          }
-          await this.convertPDFFromUrl(source, filename);
-          return;
-        } else if (source.startsWith("data:application/pdf")) {
-          // base64数据URL
-          data = this.dataURLToArrayBuffer(source);
-        } else if (source.startsWith("blob:")) {
-          // Blob URL
-          const blob = await this.fetchBlobFromBlobURL(source);
-          data = await this.blobToArrayBuffer(blob);
-          finalFilename =
-            finalFilename || this.extractFilenameFromBlobURL(source);
-        }
-      } else if (source instanceof Blob || source instanceof File) {
-        // Blob或File对象
-        if (!this.options.skipValidation && !this.validateFileType(source)) {
-          console.error("请提供有效的PDF文件");
-          this.hideLoading();
-          return;
-        }
-        data = await this.blobToArrayBuffer(source);
-        finalFilename = finalFilename || source.name || "document.pdf";
-      } else if (source instanceof ArrayBuffer) {
-        // ArrayBuffer
-        data = source;
-      } else {
-        throw new Error("不支持的数据源类型");
-      }
-
-      // 转换PDF
-      if (data) {
-        await this.convertPDF(data, finalFilename);
-      }
-    } catch (error) {
-      console.error("PDF处理失败:", error);
-      this.hideLoading();
-      throw error;
+    // 确保PDF.js已加载
+    if (!this.pdfLibLoaded) {
+      await this.loadPDFJS();
     }
+
+    this.showLoading("正在转换PDF文件...");
+
+    let data;
+    let finalFilename = filename;
+
+    // 根据不同的数据源类型进行处理
+    if (typeof source === "string") {
+      // URL或base64字符串
+      if (source.startsWith("http://") || source.startsWith("https://")) {
+        // URL
+        if (!this.options.skipValidation && !this.validatePDFUrl(source)) {
+          throw new Error("请提供有效的PDF文件URL");
+        }
+        await this.convertPDFFromUrl(source, filename);
+        this.hideLoading();
+        return;
+      } else if (source.startsWith("data:application/pdf")) {
+        // base64数据URL
+        data = this.dataURLToArrayBuffer(source);
+      } else if (source.startsWith("blob:")) {
+        // Blob URL
+        const blob = await this.fetchBlobFromBlobURL(source);
+        data = await this.blobToArrayBuffer(blob);
+        finalFilename =
+          finalFilename || this.extractFilenameFromBlobURL(source);
+      } else {
+        throw new Error("不支持的字符串格式");
+      }
+    } else if (source instanceof Blob || source instanceof File) {
+      // Blob或File对象
+      if (!this.options.skipValidation && !this.validateFileType(source)) {
+        throw new Error("请提供有效的PDF文件");
+      }
+      data = await this.blobToArrayBuffer(source);
+      finalFilename = finalFilename || source.name || "document.pdf";
+    } else if (source instanceof ArrayBuffer) {
+      // ArrayBuffer
+      data = source;
+    } else {
+      throw new Error("不支持的数据源类型");
+    }
+
+    // 转换PDF
+    if (data) {
+      await this.convertPDF(data, finalFilename);
+    }
+
+    this.hideLoading();
   }
 
   /**
@@ -232,41 +258,7 @@ class PDFToPNGConverter {
    * @returns {string} 文件名
    */
   extractFilenameFromBlobURL(blobURL) {
-    // Blob URL无法直接获取文件名，返回默认值
     return "document.pdf";
-  }
-
-  /**
-   * 创建文件选择器界面
-   */
-  createFileSelector() {
-    // 创建文件输入元素
-    this.fileInput = document.createElement("input");
-    this.fileInput.type = "file";
-    this.fileInput.accept = ".pdf,application/pdf";
-    this.fileInput.style.display = "none";
-    this.fileInput.id = "pdf-converter-file-input";
-
-    // 创建触发按钮
-    this.triggerButton = document.createElement("button");
-    this.triggerButton.textContent = "选择PDF文件并转换为PNG";
-    this.triggerButton.className = "pdf-converter-btn";
-
-    // 设置样式
-    this.addStyles();
-
-    // 绑定事件
-    this.triggerButton.addEventListener("click", () => {
-      this.fileInput.click();
-    });
-
-    this.fileInput.addEventListener("change", (event) => {
-      this.handleFileSelect(event);
-    });
-
-    // 添加到文档
-    document.body.appendChild(this.fileInput);
-    document.body.appendChild(this.triggerButton);
   }
 
   /**
@@ -275,24 +267,18 @@ class PDFToPNGConverter {
    * @param {string} filename 文件名
    */
   async convertPDFFromUrl(pdfUrl, filename = "") {
-    try {
-      // 加载PDF文档
-      const loadingTask = window.pdfjsLib.getDocument(pdfUrl);
-      const pdf = await loadingTask.promise;
+    // 加载PDF文档
+    const loadingTask = window.pdfjsLib.getDocument(pdfUrl);
+    const pdf = await loadingTask.promise;
 
-      // 获取文件名
-      const finalFilename =
-        filename || this.extractFilenameFromUrl(pdfUrl) || "document";
+    // 获取文件名
+    const finalFilename =
+      filename || this.extractFilenameFromUrl(pdfUrl) || "document";
 
-      // 转换PDF
-      await this.convertPDFPages(pdf, finalFilename);
+    // 转换PDF
+    await this.convertPDFPages(pdf, finalFilename);
 
-      this.hideLoading();
-      console.log(`PDF转换完成！共转换了 ${pdf.numPages} 页。`);
-    } catch (error) {
-      this.hideLoading();
-      throw error;
-    }
+    console.log(`PDF转换完成！共转换了 ${pdf.numPages} 页。`);
   }
 
   /**
@@ -310,7 +296,7 @@ class PDFToPNGConverter {
     // 如果URL包含download、downLoad等关键字，可能是下载接口，允许通过
     const isDownloadAPI =
       url.toLowerCase().includes("download") ||
-      url.toLowerCase().includes("downloadfile");
+      url.toLowerCase().includes("downLoad");
 
     // 对于API接口，不强制要求PDF扩展名
     if (isDownloadAPI) {
@@ -319,31 +305,6 @@ class PDFToPNGConverter {
 
     // 对于普通URL，检查扩展名或Content-Type
     return hasPdfExtension || url.includes("application/pdf");
-  }
-
-  /**
-   * 处理文件选择
-   * @param {Event} event 文件选择事件
-   */
-  async handleFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-      // 确保PDF.js已加载
-      if (!this.pdfLibLoaded) {
-        await this.loadPDFJS();
-      }
-
-      this.showLoading("正在处理PDF文件...");
-
-      // 读取并转换文件
-      await this.readAndConvertFile(file);
-    } catch (error) {
-      console.error("PDF处理失败:", error);
-      this.hideLoading();
-      alert("PDF处理失败: " + error.message);
-    }
   }
 
   /**
@@ -368,32 +329,6 @@ class PDFToPNGConverter {
   }
 
   /**
-   * 读取并转换文件
-   * @param {File} file 文件对象
-   */
-  readAndConvertFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = async (e) => {
-        try {
-          const arrayBuffer = e.target.result;
-          await this.convertPDF(arrayBuffer, file.name);
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      reader.onerror = (error) => {
-        reject(new Error("文件读取失败: " + error));
-      };
-
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  /**
    * 从URL提取文件名
    * @param {string} url 文件URL
    * @returns {string} 文件名
@@ -414,6 +349,7 @@ class PDFToPNGConverter {
           params.get("fileName") ||
           params.get("filename") ||
           params.get("file") ||
+          params.get("filesName") ||
           "document";
       }
 
@@ -435,25 +371,14 @@ class PDFToPNGConverter {
    * @param {string} originalFilename 原始文件名
    */
   async convertPDF(arrayBuffer, originalFilename) {
-    try {
-      // 加载PDF文档
-      const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
-      const pdf = await loadingTask.promise;
+    // 加载PDF文档
+    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
 
-      // 转换PDF页面
-      await this.convertPDFPages(pdf, originalFilename);
+    // 转换PDF页面
+    await this.convertPDFPages(pdf, originalFilename);
 
-      // 重置文件输入
-      if (this.fileInput) {
-        this.fileInput.value = "";
-      }
-
-      this.hideLoading();
-      console.log(`PDF转换完成！共转换了 ${pdf.numPages} 页。`);
-    } catch (error) {
-      this.hideLoading();
-      throw error;
-    }
+    console.log(`PDF转换完成！共转换了 ${pdf.numPages} 页。`);
   }
 
   /**
@@ -462,14 +387,22 @@ class PDFToPNGConverter {
    * @param {string} baseFilename 基础文件名
    */
   async convertPDFPages(pdf, baseFilename) {
-    const pagePromises = [];
+    const convertedPages = [];
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      pagePromises.push(this.convertPage(pdf, pageNum, baseFilename));
+      try {
+        await this.convertPage(pdf, pageNum, baseFilename);
+        convertedPages.push(pageNum);
+      } catch (pageError) {
+        console.error(`处理第 ${pageNum} 页时出错:`, pageError);
+      }
     }
 
-    // 并行处理所有页面
-    await Promise.allSettled(pagePromises);
+    if (convertedPages.length === 0) {
+      throw new Error("所有页面转换失败");
+    }
+
+    console.log(`成功转换了 ${convertedPages.length}/${pdf.numPages} 页`);
   }
 
   /**
@@ -479,43 +412,56 @@ class PDFToPNGConverter {
    * @param {string} baseFilename 基础文件名
    */
   async convertPage(pdf, pageNum, baseFilename) {
-    try {
-      // 获取页面
-      const page = await pdf.getPage(pageNum);
+    // 获取页面
+    const page = await pdf.getPage(pageNum);
 
-      // 设置缩放比例
-      const viewport = page.getViewport({ scale: this.options.scale });
+    // 设置缩放比例
+    const viewport = page.getViewport({ scale: this.options.scale });
 
-      // 创建Canvas
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("2d");
+    // 创建Canvas
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
 
-      // 设置Canvas尺寸
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+    // 设置Canvas尺寸
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
 
-      // 渲染PDF页面到Canvas
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport,
-      };
+    // 渲染PDF页面到Canvas
+    const renderContext = {
+      canvasContext: context,
+      viewport: viewport,
+    };
 
-      await page.render(renderContext).promise;
+    await page.render(renderContext).promise;
 
-      // 生成PNG数据URL
-      const pngDataUrl = canvas.toDataURL("image/png");
+    // 生成PNG数据URL
+    const pngDataUrl = canvas.toDataURL("image/png");
 
-      // 下载PNG图片
-      const filename =
-        baseFilename.replace(".pdf", "").replace(".PDF", "") +
-        `_page_${pageNum}.png`;
-      this.downloadPNG(pngDataUrl, filename);
+    // 下载PNG图片
+    const filename = this.cleanFilename(baseFilename) + `_page_${pageNum}.png`;
+    this.downloadPNG(pngDataUrl, filename);
 
-      console.log(`第 ${pageNum} 页转换完成`);
-    } catch (pageError) {
-      console.error(`处理第 ${pageNum} 页时出错:`, pageError);
-      throw pageError;
+    console.log(`第 ${pageNum} 页转换完成`);
+  }
+
+  /**
+   * 清理文件名
+   * @param {string} filename 原始文件名
+   * @returns {string} 清理后的文件名
+   */
+  cleanFilename(filename) {
+    // 移除扩展名
+    let cleanName = filename.replace(/\.pdf$/i, "");
+
+    // 移除特殊字符，只保留字母、数字、中文、下划线和连字符
+    cleanName = cleanName.replace(/[^\u4e00-\u9fa5a-zA-Z0-9_-]/g, "_");
+
+    // 如果清理后为空，使用默认名称
+    if (!cleanName.trim()) {
+      cleanName = "document";
     }
+
+    return cleanName;
   }
 
   /**
@@ -528,11 +474,16 @@ class PDFToPNGConverter {
     const link = document.createElement("a");
     link.href = dataUrl;
     link.download = filename;
+    link.style.display = "none";
 
     // 添加到文档并触发点击
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+
+    // 延迟清理，确保下载开始
+    setTimeout(() => {
+      document.body.removeChild(link);
+    }, 100);
   }
 
   /**
@@ -553,6 +504,9 @@ class PDFToPNGConverter {
         `;
 
     document.body.appendChild(overlay);
+
+    // 添加样式（如果尚未添加）
+    this.addStyles();
   }
 
   /**
@@ -566,31 +520,54 @@ class PDFToPNGConverter {
   }
 
   /**
+   * 显示错误提示
+   * @param {string} message 错误消息
+   */
+  showErrorToast(message) {
+    const toast = document.createElement("div");
+    toast.className = "pdf-converter-error-toast";
+    toast.innerHTML = `
+            <div class="pdf-converter-error-content">
+                <span class="pdf-converter-error-icon">!</span>
+                <span class="pdf-converter-error-message">${message}</span>
+            </div>
+        `;
+
+    toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #f44336;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 10000;
+            animation: fadeIn 0.3s;
+        `;
+
+    document.body.appendChild(toast);
+
+    // 3秒后自动消失
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 3000);
+  }
+
+  /**
    * 添加样式
    */
   addStyles() {
+    // 检查是否已添加样式
+    if (document.getElementById("pdf-converter-styles")) {
+      return;
+    }
+
     const style = document.createElement("style");
+    style.id = "pdf-converter-styles";
     style.textContent = `
-            .pdf-converter-btn {
-                padding: 12px 24px;
-                background: #007bff;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 16px;
-                margin: 20px;
-                transition: background-color 0.3s, transform 0.2s;
-            }
-            
-            .pdf-converter-btn:hover {
-                background: #0056b3;
-            }
-            
-            .pdf-converter-btn:active {
-                transform: scale(0.98);
-            }
-            
             .pdf-converter-loading {
                 position: fixed;
                 top: 0;
@@ -625,6 +602,37 @@ class PDFToPNGConverter {
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
             }
+            
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(-20px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            
+            .pdf-converter-error-toast {
+                animation: fadeIn 0.3s;
+            }
+            
+            .pdf-converter-error-content {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .pdf-converter-error-icon {
+                background: white;
+                color: #f44336;
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+            }
+            
+            .pdf-converter-error-message {
+                font-size: 14px;
+            }
         `;
 
     document.head.appendChild(style);
@@ -634,62 +642,55 @@ class PDFToPNGConverter {
    * 销毁实例
    */
   destroy() {
-    // 移除事件监听器
-    if (this.triggerButton) {
-      this.triggerButton.removeEventListener("click", () => {});
-    }
-
-    if (this.fileInput) {
-      this.fileInput.removeEventListener("change", () => {});
-    }
-
-    // 移除DOM元素
-    if (this.fileInput && this.fileInput.parentNode) {
-      this.fileInput.parentNode.removeChild(this.fileInput);
-    }
-
-    if (this.triggerButton && this.triggerButton.parentNode) {
-      this.triggerButton.parentNode.removeChild(this.triggerButton);
-    }
-
-    // 移除加载状态
     this.hideLoading();
-
-    // 清理属性
-    this.fileInput = null;
-    this.triggerButton = null;
-    this.pdfLibLoaded = false;
+    this.isProcessing = false;
   }
 }
+
+// 全局导出
 if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
   module.exports = PDFToPNGConverter;
 }
+
 if (typeof window !== "undefined") {
   window.PDFToPNGConverter = PDFToPNGConverter;
 }
 
-// 使用方法
-// 1. 支持Blob对象
-// const converter1 = new PDFToPNGConverter({
-//     pdfSource: blobObject,
-//     filename: '资质证书.pdf'
-// });
+// 便捷函数：直接转换并下载
+PDFToPNGConverter.convertAndDownload = async function (source, options = {}) {
+  const converter = new PDFToPNGConverter({
+    pdfSource: source,
+    filename: options.filename,
+    scale: options.scale || 2.0,
+    skipValidation: options.skipValidation || false,
+    onComplete: options.onComplete,
+    onError: options.onError,
+  });
 
-// 2. 支持Blob URL
-// const converter2 = new PDFToPNGConverter({
-//     pdfSource: 'blob:http://localhost:3000/xxx-xxx-xxx',
-//     filename: '资质证书.pdf'
-// });
+  return converter;
+};
 
-// 3. 支持普通URL（跳过验证）
-// const converter3 = new PDFToPNGConverter({
-//     pdfSource: downloadUrl,
-//     filename: '资质证书.pdf',
-//     skipValidation: true  // 跳过URL验证
-// });
-
-// 4. 支持ArrayBuffer
-// const converter4 = new PDFToPNGConverter({
-//     pdfSource: arrayBuffer,
-//     filename: '资质证书.pdf'
-// });
+/**
+ * 使用示例：
+ *
+ * 1. 使用Blob对象（推荐方式）
+ * const blob = await response.blob();
+ * PDFToPNGConverter.convertAndDownload(blob, {
+ *     filename: '资质证书.pdf',
+ *     skipValidation: true
+ * });
+ *
+ * 2. 使用Blob URL
+ * const downloadUrl = window.URL.createObjectURL(blob);
+ * PDFToPNGConverter.convertAndDownload(downloadUrl, {
+ *     filename: '资质证书.pdf',
+ *     skipValidation: true
+ * });
+ *
+ * 3. 使用实例方法
+ * const converter = new PDFToPNGConverter({
+ *     pdfSource: blob,
+ *     filename: '资质证书.pdf',
+ *     skipValidation: true
+ * });
+ */
