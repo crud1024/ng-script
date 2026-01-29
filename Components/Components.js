@@ -146,40 +146,17 @@ function generateBundle(map, outFile) {
     "\nvar __cache = {};\nfunction __require(id){ if(__cache[id]) return __cache[id].exports; var module = {exports:{}}; __cache[id]=module; if(__modules[id]) __modules[id](module, module.exports, __require); return module.exports; }\n";
 
   out +=
-    'var G = (typeof window!=="undefined"?window:(typeof globalThis!=="undefined"?globalThis:global));\nG.NG = G.NG || {}; G.NG.Components = G.NG.Components || {};\n';
-
-  // Initialize OSD namespace
-  out += "G.OSD = G.OSD || {};\n";
+    'var G = (typeof window!=="undefined"?window:(typeof globalThis!=="undefined"?globalThis:global));\nG.$OSD = G.$OSD || {};\n';
 
   for (const id of Object.values(map)) {
     const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
     const dashKey = key.replace(/\//g, "-");
     out +=
-      "G.NG.Components[" +
+      "G.$OSD[" +
       JSON.stringify(dashKey) +
       "] = __require(" +
       JSON.stringify(id) +
       ");\n";
-
-    // Generate OSD key: extract version and repeat it with component name
-    const pathParts = key.split("/");
-    if (pathParts.length >= 2) {
-      const componentName = pathParts[pathParts.length - 1];
-      const version = pathParts[pathParts.length - 2];
-      // OSD key format: VERSIONCOMPONENTVERSIONCOMPONENT (all uppercase)
-      const osdKey = (
-        version +
-        componentName +
-        version +
-        componentName
-      ).toUpperCase();
-      out +=
-        "G.OSD[" +
-        JSON.stringify(osdKey) +
-        "] = G.NG.Components[" +
-        JSON.stringify(dashKey) +
-        "];\n";
-    }
   }
 
   out += "\n})();\n";
@@ -436,7 +413,7 @@ const map = buildMap();
 if (require.main === module) {
   // CLI: generate bundle file
   const outFile = path.join(rootDir, "Components.all.js");
-  generateBundle(map, outFile);
+  generateBundle(map, outFile);  // Changed to use $OSD instead of NG.Components and OSD
   // also generate current dir only bundle
   const currentDirOutFile = path.join(rootDir, "Components.currentDir.all.js");
   generateCurrentDirBundle(currentDirOutFile);
