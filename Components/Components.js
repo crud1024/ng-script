@@ -28,6 +28,14 @@ function walk(dir) {
         base === "Components.osd.all.new.min.js"
       )
         continue;
+
+      // 添加验证以确保文件有内容
+      const content = fs.readFileSync(full, "utf8");
+      if (content.trim().length === 0) {
+        console.warn(`Skipping empty file: ${full}`);
+        continue;
+      }
+
       res.push(full);
     }
   }
@@ -108,7 +116,7 @@ function transformESMtoCommonJS(code) {
   // import default: import X from 'mod'; -> const X = require('mod');
   out = out.replace(
     /^\s*import\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/gm,
-    "const $1 = require('$2');"
+    "const $1 = require('$2');",
   );
 
   // import named: import {a, b as c} from 'mod'; -> const {a, b: c} = require('mod');
@@ -121,13 +129,13 @@ function transformESMtoCommonJS(code) {
         .map((s) => s.replace(/\s+as\s+/, " : "))
         .join(", ");
       return `const {${mapped}} = require('${mod}');`;
-    }
+    },
   );
 
   // import * as X from 'mod';
   out = out.replace(
     /^\s*import\s+\*\s+as\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/gm,
-    "const $1 = require('$2');"
+    "const $1 = require('$2');",
   );
 
   // bare import -> require
@@ -143,21 +151,21 @@ function transformESMtoCommonJS(code) {
     function (m, name) {
       names.push(name);
       return `function ${name}`;
-    }
+    },
   );
   out = out.replace(
     /^\s*export\s+class\s+([A-Za-z0-9_$]+)/gm,
     function (m, name) {
       names.push(name);
       return `class ${name}`;
-    }
+    },
   );
   out = out.replace(
     /^\s*export\s+(?:const|let|var)\s+([A-Za-z0-9_$]+)/gm,
     function (m, name) {
       names.push(name);
       return m.replace(/^\s*export\s+/, "");
-    }
+    },
   );
 
   // export { a, b as c }
