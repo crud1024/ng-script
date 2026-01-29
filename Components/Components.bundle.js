@@ -24,10 +24,64 @@ function walk(dir) {
       if (
         base === "Components.all.js" ||
         base === "Components.all.min.js" ||
+        base === "Components.currentDir.all.js" ||
+        base === "Components.currentDir.all.min.js" ||
+        base === "Components.bundle.js" ||
         base === "Components.osd.all.min.js" ||
-        base === "Components.osd.all.new.min.js"
+        base === "Components.osd.all.new.min.js" ||
+        base.endsWith(".min.js") || // 排除所有.min.js文件
+        // 排除Version目录下的自动生成文件
+        (dir.includes("/Version/") && base.startsWith("V5Components"))
       )
         continue;
+
+      // Add validation to ensure file has content
+      const content = fs.readFileSync(full, "utf8");
+      if (content.trim().length === 0) {
+        console.warn(`Skipping empty file: ${full}`);
+        continue;
+      }
+
+      res.push(full);
+    }
+  }
+  return res;
+}
+
+function walkCurrentDirOnly(dir) {
+  const res = [];
+  const items = fs.readdirSync(dir);
+  for (const it of items) {
+    if (it.startsWith(".")) continue;
+    const full = path.join(dir, it);
+    const stat = fs.statSync(full);
+    if (stat.isDirectory()) {
+      // Skip subdirectories - only process current directory files
+      continue;
+    } else if (stat.isFile() && it.endsWith(".js")) {
+      const base = path.basename(full);
+      if (full === __filename) continue;
+      if (
+        base === "Components.all.js" ||
+        base === "Components.all.min.js" ||
+        base === "Components.currentDir.all.js" ||
+        base === "Components.currentDir.all.min.js" ||
+        base === "Components.bundle.js" ||
+        base === "Components.osd.all.min.js" ||
+        base === "Components.osd.all.new.min.js" ||
+        base.endsWith(".min.js") || // 排除所有.min.js文件
+        // 排除Version目录下的自动生成文件
+        (dir.includes("/Version/") && base.startsWith("V5Components"))
+      )
+        continue;
+
+      // Add validation to ensure file has content
+      const content = fs.readFileSync(full, "utf8");
+      if (content.trim().length === 0) {
+        console.warn(`Skipping empty file: ${full}`);
+        continue;
+      }
+
       res.push(full);
     }
   }
@@ -42,6 +96,18 @@ function makeId(from, filePath) {
 
 function buildMap() {
   const files = walk(rootDir);
+  const map = {};
+  for (const f of files) {
+    const id = makeId(rootDir, f);
+    // key without leading './' and without .js
+    const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
+    map[key] = id;
+  }
+  return map;
+}
+
+function buildCurrentDirMap() {
+  const files = walkCurrentDirOnly(rootDir);
   const map = {};
   for (const f of files) {
     const id = makeId(rootDir, f);
@@ -71,6 +137,13 @@ function generateBundle(map, outFile) {
   for (const [k, id] of Object.entries(map)) {
     const abs = path.join(rootDir, id.replace(/^\.\//, ""));
     let content = fs.readFileSync(abs, "utf8");
+
+    // Skip empty files
+    if (content.trim().length === 0) {
+      console.warn(`Skipping empty file: ${abs}`);
+      continue;
+    }
+
     // transform simple ESM -> CommonJS so terser can parse bundled code
     content = transformESMtoCommonJS(content);
     out +=
@@ -82,16 +155,62 @@ function generateBundle(map, outFile) {
   }
 
   out +=
-    "\nvar __cache = {};\nfunction __require(id){ if(__cache[id]) return __cache[id].exports; var module = {exports:{}}; __cache[id]=module; __modules[id](module, module.exports, __require); return module.exports; }\n";
+    "\nvar __cache = {};\nfunction __require(id){ if(__cache[id]) return __cache[id].exports; var module = {exports:{}}; __cache[id]=module; if(__modules[id]) __modules[id](module, module.exports, __require); return module.exports; }\n";
 
   out +=
-    'var G = (typeof window!=="undefined"?window:(typeof globalThis!=="undefined"?globalThis:global));\nG.NG = G.NG || {}; G.NG.Components = G.NG.Components || {};\n';
+    'var G = (typeof window!=="undefined"?window:(typeof globalThis!=="undefined"?globalThis:global));\nG.$OSD = G.$OSD || {};\n';
 
   for (const id of Object.values(map)) {
     const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
+    const dashKey = key.replace(/\//g, "-");
     out +=
-      "G.NG.Components[" +
-      JSON.stringify(key) +
+      "G.$OSD[" +
+      JSON.stringify(dashKey) +
+      "] = __require(" +
+      JSON.stringify(id) +
+      ");\n";
+  }
+
+  out += "\n})();\n";
+
+  fs.writeFileSync(outFile, out, "utf8");
+}
+
+function generateCurrentDirBundle(outFile) {
+  const map = buildCurrentDirMap();
+  let out = '(function(){\n"use strict";\nvar __modules = {};\n';
+  for (const [k, id] of Object.entries(map)) {
+    const abs = path.join(rootDir, id.replace(/^\.\//, ""));
+    let content = fs.readFileSync(abs, "utf8");
+
+    // Skip empty files
+    if (content.trim().length === 0) {
+      console.warn(`Skipping empty file: ${abs}`);
+      continue;
+    }
+
+    // transform simple ESM -> CommonJS so terser can parse bundled code
+    content = transformESMtoCommonJS(content);
+    out +=
+      "__modules[" +
+      JSON.stringify(id) +
+      "] = function(module, exports, require){\n" +
+      content +
+      "\n};\n";
+  }
+
+  out +=
+    "\nvar __cache = {};\nfunction __require(id){ if(__cache[id]) return __cache[id].exports; var module = {exports:{}}; __cache[id]=module; if(__modules[id]) __modules[id](module, module.exports, __require); return module.exports; }\n";
+
+  out +=
+    'var G = (typeof window!=="undefined"?window:(typeof globalThis!=="undefined"?globalThis:global));\nG.$OSD = G.$OSD || {};\n';
+
+  for (const id of Object.values(map)) {
+    const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
+    const dashKey = key.replace(/\//g, "-");
+    out +=
+      "G.$OSD[" +
+      JSON.stringify(dashKey) +
       "] = __require(" +
       JSON.stringify(id) +
       ");\n";
@@ -181,13 +300,157 @@ function transformESMtoCommonJS(code) {
   return out;
 }
 
+function simpleMinify(code) {
+  let out = "";
+  let i = 0;
+  const len = code.length;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let prev = "";
+  while (i < len) {
+    const ch = code[i];
+    const next = i + 1 < len ? code[i + 1] : "";
+    if (inLineComment) {
+      if (ch === "\n") {
+        inLineComment = false;
+        out += ch;
+      }
+      i++;
+      prev = ch;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 2;
+        prev = "/";
+        continue;
+      }
+      i++;
+      prev = ch;
+      continue;
+    }
+    if (inSingle) {
+      out += ch;
+      if (ch === "'" && prev !== "\\") inSingle = false;
+      prev = ch;
+      i++;
+      continue;
+    }
+    if (inDouble) {
+      out += ch;
+      if (ch === '"' && prev !== "\\") inDouble = false;
+      prev = ch;
+      i++;
+      continue;
+    }
+    if (inTemplate) {
+      out += ch;
+      if (ch === "`" && prev !== "\\") inTemplate = false;
+      prev = ch;
+      i++;
+      continue;
+    }
+
+    // not in any string/comment
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i += 2;
+      prev = "/";
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 2;
+      prev = "/";
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      out += ch;
+      prev = ch;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      out += ch;
+      prev = ch;
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      inTemplate = true;
+      out += ch;
+      prev = ch;
+      i++;
+      continue;
+    }
+
+    // collapse multiple whitespace into single space
+    if (/\s/.test(ch)) {
+      // preserve single newline
+      if (ch === "\n") {
+        out += "\n";
+        prev = ch;
+        i++;
+        continue;
+      }
+      // for other whitespace, add single space if previous not whitespace
+      const last = out.length ? out[out.length - 1] : "";
+      if (last && /\s/.test(last)) {
+        // skip
+      } else {
+        out += " ";
+      }
+      prev = ch;
+      i++;
+      continue;
+    }
+
+    out += ch;
+    prev = ch;
+    i++;
+  }
+
+  // trim
+  return out.replace(/^[ \t\n]+|[ \t\n]+$/g, "");
+}
+
 const map = buildMap();
 
 if (require.main === module) {
   // CLI: generate bundle file
   const outFile = path.join(rootDir, "Components.all.js");
-  generateBundle(map, outFile);
+  generateBundle(map, outFile); // Changed to use $OSD instead of NG.Components and OSD
+  // also generate current dir only bundle
+  const currentDirOutFile = path.join(rootDir, "Components.currentDir.all.js");
+  generateCurrentDirBundle(currentDirOutFile);
+  // also write a simple-minified version
+  try {
+    const raw = fs.readFileSync(outFile, "utf8");
+    const mini = simpleMinify(raw);
+    const minOut = path.join(rootDir, "Components.all.min.js");
+    fs.writeFileSync(minOut, mini, "utf8");
+    console.log("Minified bundle written to", minOut);
+
+    // also minify current dir bundle
+    const currentRaw = fs.readFileSync(currentDirOutFile, "utf8");
+    const currentMini = simpleMinify(currentRaw);
+    const currentMinOut = path.join(
+      rootDir,
+      "Components.currentDir.all.min.js",
+    );
+    fs.writeFileSync(currentMinOut, currentMini, "utf8");
+    console.log("Minified current dir bundle written to", currentMinOut);
+  } catch (e) {
+    console.error("Minify failed:", e && e.message);
+  }
   console.log("Bundle written to", outFile);
+  console.log("Current dir bundle written to", currentDirOutFile);
   process.exit(0);
 } else {
   // As module: export lazy require map
