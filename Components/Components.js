@@ -29,7 +29,7 @@ function walk(dir) {
         base === "Components.bundle.js" ||
         base === "Components.osd.all.min.js" ||
         base === "Components.osd.all.new.min.js" ||
-        base.endsWith(".min.js") ||  // 排除所有.min.js文件
+        base.endsWith(".min.js") || // 排除所有.min.js文件
         // 排除Version目录下的自动生成文件
         (dir.includes("/Version/") && base.startsWith("V5Components"))
       )
@@ -69,7 +69,7 @@ function walkCurrentDirOnly(dir) {
         base === "Components.bundle.js" ||
         base === "Components.osd.all.min.js" ||
         base === "Components.osd.all.new.min.js" ||
-        base.endsWith(".min.js") ||  // 排除所有.min.js文件
+        base.endsWith(".min.js") || // 排除所有.min.js文件
         // 排除Version目录下的自动生成文件
         (dir.includes("/Version/") && base.startsWith("V5Components"))
       )
@@ -137,13 +137,13 @@ function generateBundle(map, outFile) {
   for (const [k, id] of Object.entries(map)) {
     const abs = path.join(rootDir, id.replace(/^\.\//, ""));
     let content = fs.readFileSync(abs, "utf8");
-    
+
     // Skip empty files
     if (content.trim().length === 0) {
       console.warn(`Skipping empty file: ${abs}`);
       continue;
     }
-    
+
     // transform simple ESM -> CommonJS so terser can parse bundled code
     content = transformESMtoCommonJS(content);
     out +=
@@ -425,7 +425,7 @@ const map = buildMap();
 if (require.main === module) {
   // CLI: generate bundle file
   const outFile = path.join(rootDir, "Components.all.js");
-  generateBundle(map, outFile);  // Changed to use $OSD instead of NG.Components and OSD
+  generateBundle(map, outFile); // Changed to use $OSD instead of NG.Components and OSD
   // also generate current dir only bundle
   const currentDirOutFile = path.join(rootDir, "Components.currentDir.all.js");
   generateCurrentDirBundle(currentDirOutFile);

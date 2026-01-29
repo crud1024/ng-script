@@ -1,49 +1,120 @@
 # NG Components 组件库使用文档
 
+这里添加内容
+
 ## 概述
 
 NG Components 是一个功能丰富的 JavaScript 组件库，提供了多种常用的 UI 组件。组件库通过模块化方式组织，支持按需使用，每个组件都有独立的命名空间。
+
+## 业主方事业部使用文档
+
+### 概述
+
+业主方事业部使用文档旨在帮助内部开发人员快速了解和使用NG Components组件库。本文档由王智锋（杜甫）维护，英文名Carl，如有问题请联系 crud1024@163.com。
+
+### 快速开始
+
+对于业主方事业部内部项目，推荐使用以下方式引入组件库：
+
+```html
+<!-- 内部CDN引入 -->
+<script src="./Components.all.js"></script>
+
+<script>
+  // 等待组件库加载完成
+  $NG.AllReady(
+    function () {
+      console.log("组件库已就绪");
+
+      // 访问组件
+      const buttonGroup = $OSD["ButtonGroup-V1-ButtonGroup"];
+      const message = $OSD["Message-V2-Message"];
+      const loading = $OSD["Loading-V2-Loading"];
+
+      // 示例：创建按钮组
+      new buttonGroup("#my-element", {
+        menuItems: [
+          { text: "选项1", onClick: () => console.log("点击选项1") },
+          { text: "选项2", onClick: () => console.log("点击选项2") },
+        ],
+      });
+    },
+    function () {
+      console.log("准备就绪");
+    },
+  );
+</script>
+```
+
+### 内部组件访问
+
+所有组件都可以通过 `window.$OSD` 对象访问，组件名称采用连字符格式（例如：`ComponentName-Version-ComponentName`）：
+
+- 按钮组：`$OSD["ButtonGroup-V1-ButtonGroup"]`
+- 加载动画：`$OSD["Loading-V1-FishingAnimation"]` 或 `$OSD["Loading-V2-Loading"]`
+- 消息提示：`$OSD["Message-V1-Message"]` 或 `$OSD["Message-V2-Message"]`
+
+### 内部最佳实践
+
+1. **组件选择**：优先使用V2版本的组件，如Message V2（SVG图标版）
+2. **性能优化**：按需引入所需组件，避免加载不必要的功能
+3. **错误处理**：始终在组件使用前检查其是否存在
+4. **样式定制**：如需定制组件样式，请遵循设计规范
+
+### 技术支持
+
+如在使用过程中遇到问题，请联系：
+
+- 联系人：王智锋（杜甫）
+- 英文名：Carl
+- 邮箱：crud1024@163.com
+- 项目地址：https://github.com/crud1024/ng-script
+
+### 版本管理
+
+业主方事业部使用的组件版本会定期同步最新稳定版本，版本更新前会提前通知相关团队。
 
 ## 安装与引入
 
 ### CDN 引入
 
-```html
+```
 <!-- 在主页面中引入组件库 -->
 <script>
   $NG.AllReady(
     function () {
       console.log("detail Ready");
 
-      function loadScript(src) {
-        return new Promise((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = src;
-          script.onload = () => resolve(script);
-          script.onerror = () => reject(new Error(`脚本加载失败: ${src}`));
-          document.head.appendChild(script);
-        });
-      }
-
-      loadScript(
-        "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Components.osd.all.min.js"
-      )
-        .then((script) => {
-          console.log("Components.js 加载完成");
-
-          // 在这里初始化组件
-          initComponents();
-
-          // 检查可用组件
-          console.log("所有可用组件:", Object.keys(window.NG.Components || {}));
-        })
-        .catch((error) => {
-          console.error("加载过程出错:", error);
-        });
+      $NG.loadScript(
+        "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Utils/Others/PDFToPNGConverter/V1/PDFToPNGConverter.js",
+        function () {
+          // 初始化示例
+          try {
+            console.log($OSD["TreeExpandPanel-V1-TreeExpandPanel"]);
+            // 加载指定组件（含版本）
+            new $OSD["TreeExpandPanel-V1-TreeExpandPanel"].NGTreeExpandPanel({
+              toolbarSelector: "div.udp-panel-title#_re_",
+              containerSelector: ".row-hover.rows-container.editable",
+              animationDelay: 150,
+              position: { index: 2, side: "after" },
+              margin: { left: "0 2% 0 2%", right: "0 20px 0 0" },
+              defaultState: "level",
+              defaultLevel: 3,
+              defaultLevels: 5,
+              maxCustomLevel: 30,
+            });
+          } catch (error) {
+            console.error("失败", error);
+          }
+        },
+        function (error) {
+          console.error("加载失败:", error);
+        },
+      );
     },
     function () {
       console.log("list Ready");
-    }
+    },
   );
 </script>
 ```
@@ -52,7 +123,7 @@ NG Components 是一个功能丰富的 JavaScript 组件库，提供了多种常
 
 组件加载完成后，可以通过以下方式访问：
 
-```javascript
+```
 // 方式 1：通过全局对象访问
 const ButtonGroup = window.NG.Components["ButtonGroup/V1/ButtonGroup"];
 const Message = window.NG.Components["Message/V1/Message"];
@@ -71,7 +142,7 @@ const messageInstance = window.Message; // Message 组件会自动注册到全�
 
 #### 构造函数
 
-```javascript
+```
 const buttonGroup = new ButtonGroup(container, options);
 ```
 
@@ -97,7 +168,7 @@ const buttonGroup = new ButtonGroup(container, options);
 
 #### 菜单项配置
 
-```javascript
+```
 const menuItems = [
   {
     text: "编辑",
@@ -183,7 +254,7 @@ const menuItems = [
 
 **基本用法：**
 
-```javascript
+```
 // 创建普通下拉按钮
 const btnGroup = new ButtonGroup("#my-button", {
   triggerStyle: "button-style",
@@ -205,7 +276,7 @@ document
 
 **Split Button（分割按钮）：**
 
-```javascript
+```
 const splitBtn = new ButtonGroup("#split-button", {
   triggerStyle: "split-button",
   menuItems: [
@@ -222,7 +293,7 @@ const splitBtn = new ButtonGroup("#split-button", {
 
 **文本样式按钮：**
 
-```javascript
+```
 const textBtn = new ButtonGroup("#text-button", {
   triggerStyle: "text-only",
   menuItems: [
@@ -234,7 +305,7 @@ const textBtn = new ButtonGroup("#text-button", {
 
 **动态更新菜单：**
 
-```javascript
+```
 const dynamicBtn = new ButtonGroup("#dynamic-button", {
   menuItems: [],
 });
@@ -260,7 +331,7 @@ dynamicBtn.updateOptions({
 
 #### 创建方法
 
-```javascript
+```
 const fishingAnimation = createFishingAnimation(containerSelector, loadingText);
 ```
 
@@ -283,7 +354,7 @@ const fishingAnimation = createFishingAnimation(containerSelector, loadingText);
 
 #### 全局方法
 
-```javascript
+```
 removeAllFishingAnimations(); // 移除所有钓鱼动画实例
 ```
 
@@ -291,11 +362,11 @@ removeAllFishingAnimations(); // 移除所有钓鱼动画实例
 
 **基本用法：**
 
-```javascript
+```
 // 创建钓鱼动画
 const fishingLoader = createFishingAnimation(
   "#loading-container",
-  "正在加载中..."
+  "正在加载中...",
 );
 
 // 5 秒后移除
@@ -317,7 +388,7 @@ setTimeout(() => {
 
 **批量移除：**
 
-```javascript
+```
 // 移除页面上所有钓鱼动画
 removeAllFishingAnimations();
 ```
@@ -330,7 +401,7 @@ removeAllFishingAnimations();
 
 #### 创建方法
 
-```javascript
+```
 const loadingInstance = createLoading(containerSelector, loadingText);
 ```
 
@@ -357,7 +428,7 @@ const loadingInstance = createLoading(containerSelector, loadingText);
 
 **基本用法：**
 
-```javascript
+```
 // 创建加载器
 const loader = createLoading("#app-container", "数据加载中...");
 
@@ -373,7 +444,7 @@ setTimeout(() => {
 
 **主题切换：**
 
-```javascript
+```
 const loader = createLoading("#app-container", "加载中");
 
 // 切换到暗色主题
@@ -385,7 +456,7 @@ loader.setTheme("light");
 
 **显示/隐藏控制：**
 
-```javascript
+```
 const loader = createLoading("#app-container", "加载中");
 
 // 隐藏加载器
@@ -405,7 +476,7 @@ loader.show();
 
 Message 组件会自动创建单例实例并挂载到 window.Message。
 
-```javascript
+```
 // 直接使用全局实例
 const message = window.Message;
 ```
@@ -445,7 +516,7 @@ const message = window.Message;
 
 **基本用法：**
 
-```javascript
+```
 // 显示普通消息
 const msgId = Message.info("这是一条信息提示");
 
@@ -467,7 +538,7 @@ Message.warning("请注意数据安全", {
 
 **高级配置：**
 
-```javascript
+```
 // 自定义位置和回调
 const customMsg = Message.show({
   type: "success",
@@ -489,7 +560,7 @@ setTimeout(() => {
 
 **批量操作：**
 
-```javascript
+```
 // 清除所有消息
 Message.clear();
 ```
@@ -504,7 +575,7 @@ Message V2 是 V1 的升级版本，使用 SVG 图标替代文字图标，提供
 
 与 V1 完全相同，只是图标显示方式不同。
 
-```javascript
+```
 // V2 使用方法与 V1 完全一致
 const MessageV2 = window.NG.Components["Message/V2/Message"];
 const messageV2 = new MessageV2();
@@ -515,7 +586,7 @@ messageV2.success("操作成功！");
 
 ## 组件初始化示例
 
-```javascript
+```
 // 初始化函数示例
 function initComponents() {
   // 1. 初始化按钮组
@@ -539,7 +610,7 @@ function initComponents() {
       onMainButtonClick: function () {
         console.log("执行默认操作");
       },
-    }
+    },
   );
 
   // 2. 消息系统（使用V2版本）
@@ -627,7 +698,7 @@ function initComponents() {
 
 ### 调试建议
 
-```javascript
+```
 // 调试组件状态
 console.log("可用组件:", Object.keys(window.NG.Components || {}));
 
