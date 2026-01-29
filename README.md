@@ -68,32 +68,18 @@ ng-script/
 └── README.md            # 项目主文档
 ```
 
-## 打包工具
-
-项目提供了 [Components.js](file:///Users/carl/Desktop/GitHub/ng-script/ng-script/Components/Components.js) 工具，可以自动扫描 Components 目录下的所有组件，并将它们打包成一个文件。运行以下命令即可生成打包文件：
-
-```bash
-cd Components
-node Components.js
-```
-
-该命令会生成以下文件：
-
-- [Components.all.js](file:///Users/carl/Desktop/GitHub/ng-script/ng-script/Components/Components.all.js) - 包含所有组件的完整包
-- [Components.all.min.js](file:///Users/carl/Desktop/GitHub/ng-script/ng-script/Components/Components.all.min.js) - 压缩版本
-
-## 业主方事业部使用文档
+## 使用文档
 
 ### 概述
 
-业主方事业部使用文档旨在帮助内部开发人员快速了解和使用ng-script组件库。本文档由王智锋（杜甫）维护，英文名Carl，如有问题请联系 crud1024@163.com。
+本文档由王智锋（杜甫）维护，英文名Carl，如有问题请联系 crud1024@163.com。
 
 ### 快速开始
 
-对于业主方事业部内部项目，推荐使用以下方式引入组件库：
+推荐使用以下方式引入组件库：
 
 ```html
-<!-- 内部CDN引入 -->
+<!-- 本地引入 -->
 <script src="./Components.all.js"></script>
 
 <script>
@@ -122,7 +108,7 @@ node Components.js
 </script>
 ```
 
-### 内部组件访问
+### 组件访问
 
 所有组件都可以通过 `window.$OSD` 对象访问，组件名称采用连字符格式（例如：`ComponentName-Version-ComponentName`）：
 
@@ -130,7 +116,7 @@ node Components.js
 - 加载动画：`$OSD["Loading-V1-FishingAnimation"]` 或 `$OSD["Loading-V2-Loading"]`
 - 消息提示：`$OSD["Message-V1-Message"]` 或 `$OSD["Message-V2-Message"]`
 
-### 内部最佳实践
+### 最佳实践
 
 1. **组件选择**：优先使用V2版本的组件，如Message V2（SVG图标版）
 2. **性能优化**：按需引入所需组件，避免加载不必要的功能
@@ -145,10 +131,6 @@ node Components.js
 - 英文名：Carl
 - 邮箱：crud1024@163.com
 - 项目地址：https://github.com/crud1024/ng-script
-
-### 版本管理
-
-业主方事业部使用的组件版本会定期同步最新稳定版本，版本更新前会提前通知相关团队。
 
 ## 贡献
 
