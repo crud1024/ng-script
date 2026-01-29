@@ -28,6 +28,48 @@ function walk(dir) {
         base === "Components.osd.all.new.min.js"
       )
         continue;
+
+      // Add validation to ensure file has content
+      const content = fs.readFileSync(full, "utf8");
+      if (content.trim().length === 0) {
+        console.warn(`Skipping empty file: ${full}`);
+        continue;
+      }
+
+      res.push(full);
+    }
+  }
+  return res;
+}
+
+function walkCurrentDirOnly(dir) {
+  const res = [];
+  const items = fs.readdirSync(dir);
+  for (const it of items) {
+    if (it.startsWith(".")) continue;
+    const full = path.join(dir, it);
+    const stat = fs.statSync(full);
+    if (stat.isDirectory()) {
+      // Skip subdirectories - only process current directory files
+      continue;
+    } else if (stat.isFile() && it.endsWith(".js")) {
+      const base = path.basename(full);
+      if (full === __filename) continue;
+      if (
+        base === "Components.all.js" ||
+        base === "Components.all.min.js" ||
+        base === "Components.osd.all.min.js" ||
+        base === "Components.osd.all.new.min.js"
+      )
+        continue;
+
+      // Add validation to ensure file has content
+      const content = fs.readFileSync(full, "utf8");
+      if (content.trim().length === 0) {
+        console.warn(`Skipping empty file: ${full}`);
+        continue;
+      }
+
       res.push(full);
     }
   }
@@ -42,6 +84,18 @@ function makeId(from, filePath) {
 
 function buildMap() {
   const files = walk(rootDir);
+  const map = {};
+  for (const f of files) {
+    const id = makeId(rootDir, f);
+    // key without leading './' and without .js
+    const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
+    map[key] = id;
+  }
+  return map;
+}
+
+function buildCurrentDirMap() {
+  const files = walkCurrentDirOnly(rootDir);
   const map = {};
   for (const f of files) {
     const id = makeId(rootDir, f);
@@ -71,13 +125,13 @@ function generateBundle(map, outFile) {
   for (const [k, id] of Object.entries(map)) {
     const abs = path.join(rootDir, id.replace(/^\.\//, ""));
     let content = fs.readFileSync(abs, "utf8");
-    
+
     // Skip empty files
     if (content.trim().length === 0) {
       console.warn(`Skipping empty file: ${abs}`);
       continue;
     }
-    
+
     // transform simple ESM -> CommonJS so terser can parse bundled code
     content = transformESMtoCommonJS(content);
     out +=
@@ -95,7 +149,7 @@ function generateBundle(map, outFile) {
     'var G = (typeof window!=="undefined"?window:(typeof globalThis!=="undefined"?globalThis:global));\nG.NG = G.NG || {}; G.NG.Components = G.NG.Components || {};\n';
 
   // Initialize OSD namespace
-  out += 'G.OSD = G.OSD || {};\n';
+  out += "G.OSD = G.OSD || {};\n";
 
   for (const id of Object.values(map)) {
     const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
@@ -106,16 +160,71 @@ function generateBundle(map, outFile) {
       "] = __require(" +
       JSON.stringify(id) +
       ");\n";
-      
+
     // Generate OSD key: extract version and repeat it with component name
-    const pathParts = key.split('/');
+    const pathParts = key.split("/");
     if (pathParts.length >= 2) {
       const componentName = pathParts[pathParts.length - 1];
       const version = pathParts[pathParts.length - 2];
       // OSD key format: VERSIONCOMPONENTVERSIONCOMPONENT (all uppercase)
-      const osdKey = (version + componentName + version + componentName).toUpperCase();
-      out += "G.OSD[" + JSON.stringify(osdKey) + "] = G.NG.Components[" + JSON.stringify(dashKey) + "];\n";
+      const osdKey = (
+        version +
+        componentName +
+        version +
+        componentName
+      ).toUpperCase();
+      out +=
+        "G.OSD[" +
+        JSON.stringify(osdKey) +
+        "] = G.NG.Components[" +
+        JSON.stringify(dashKey) +
+        "];\n";
     }
+  }
+
+  out += "\n})();\n";
+
+  fs.writeFileSync(outFile, out, "utf8");
+}
+
+function generateCurrentDirBundle(outFile) {
+  const map = buildCurrentDirMap();
+  let out = '(function(){\n"use strict";\nvar __modules = {};\n';
+  for (const [k, id] of Object.entries(map)) {
+    const abs = path.join(rootDir, id.replace(/^\.\//, ""));
+    let content = fs.readFileSync(abs, "utf8");
+
+    // Skip empty files
+    if (content.trim().length === 0) {
+      console.warn(`Skipping empty file: ${abs}`);
+      continue;
+    }
+
+    // transform simple ESM -> CommonJS so terser can parse bundled code
+    content = transformESMtoCommonJS(content);
+    out +=
+      "__modules[" +
+      JSON.stringify(id) +
+      "] = function(module, exports, require){\n" +
+      content +
+      "\n};\n";
+  }
+
+  out +=
+    "\nvar __cache = {};\nfunction __require(id){ if(__cache[id]) return __cache[id].exports; var module = {exports:{}}; __cache[id]=module; if(__modules[id]) __modules[id](module, module.exports, __require); return module.exports; }\n";
+
+  out +=
+    'var G = (typeof window!=="undefined"?window:(typeof globalThis!=="undefined"?globalThis:global));\nG.$OSD = G.$OSD || {};\n';
+
+  for (const id of Object.values(map)) {
+    const key = id.replace(/^\.\//, "").replace(/\.js$/, "");
+    const dashKey = key.replace(/\//g, "-");
+    out +=
+      "G.$OSD[" +
+      JSON.stringify(dashKey) +
+      "] = __require(" +
+      JSON.stringify(id) +
+      ");\n";
   }
 
   out += "\n})();\n";
@@ -129,7 +238,7 @@ function transformESMtoCommonJS(code) {
   // import default: import X from 'mod'; -> const X = require('mod');
   out = out.replace(
     /^\s*import\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/gm,
-    "const $1 = require('$2');"
+    "const $1 = require('$2');",
   );
 
   // import named: import {a, b as c} from 'mod'; -> const {a, b: c} = require('mod');
@@ -142,13 +251,13 @@ function transformESMtoCommonJS(code) {
         .map((s) => s.replace(/\s+as\s+/, " : "))
         .join(", ");
       return `const {${mapped}} = require('${mod}');`;
-    }
+    },
   );
 
   // import * as X from 'mod';
   out = out.replace(
     /^\s*import\s+\*\s+as\s+([A-Za-z0-9_$]+)\s+from\s+['"]([^'"]+)['"];?/gm,
-    "const $1 = require('$2');"
+    "const $1 = require('$2');",
   );
 
   // bare import -> require
@@ -164,21 +273,21 @@ function transformESMtoCommonJS(code) {
     function (m, name) {
       names.push(name);
       return `function ${name}`;
-    }
+    },
   );
   out = out.replace(
     /^\s*export\s+class\s+([A-Za-z0-9_$]+)/gm,
     function (m, name) {
       names.push(name);
       return `class ${name}`;
-    }
+    },
   );
   out = out.replace(
     /^\s*export\s+(?:const|let|var)\s+([A-Za-z0-9_$]+)/gm,
     function (m, name) {
       names.push(name);
       return m.replace(/^\s*export\s+/, "");
-    }
+    },
   );
 
   // export { a, b as c }
@@ -328,6 +437,9 @@ if (require.main === module) {
   // CLI: generate bundle file
   const outFile = path.join(rootDir, "Components.all.js");
   generateBundle(map, outFile);
+  // also generate current dir only bundle
+  const currentDirOutFile = path.join(rootDir, "Components.currentDir.all.js");
+  generateCurrentDirBundle(currentDirOutFile);
   // also write a simple-minified version
   try {
     const raw = fs.readFileSync(outFile, "utf8");
@@ -335,10 +447,21 @@ if (require.main === module) {
     const minOut = path.join(rootDir, "Components.all.min.js");
     fs.writeFileSync(minOut, mini, "utf8");
     console.log("Minified bundle written to", minOut);
+
+    // also minify current dir bundle
+    const currentRaw = fs.readFileSync(currentDirOutFile, "utf8");
+    const currentMini = simpleMinify(currentRaw);
+    const currentMinOut = path.join(
+      rootDir,
+      "Components.currentDir.all.min.js",
+    );
+    fs.writeFileSync(currentMinOut, currentMini, "utf8");
+    console.log("Minified current dir bundle written to", currentMinOut);
   } catch (e) {
     console.error("Minify failed:", e && e.message);
   }
   console.log("Bundle written to", outFile);
+  console.log("Current dir bundle written to", currentDirOutFile);
   process.exit(0);
 } else {
   // As module: export lazy require map
