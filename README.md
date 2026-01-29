@@ -1,281 +1,159 @@
 # ng-script
 
-轻量级的前端脚本加载辅助示例，提供按类型加载、按相对路径加载以及加载完整 URL 的能力，并支持动态修改基础路径以便灵活切换环境。
+ng-script 是一个功能丰富的 JavaScript 组件库，提供了多种常用的 UI 组件。组件库通过模块化方式组织，支持按需使用，每个组件都有独立的命名空间。
 
-**快速上手**
+## 概述
 
-- 按类型加载（自动在基础路径上拼接）：
+ng-script 项目包含多个常用的前端 UI 组件，如按钮组、加载动画、消息提示等。这些组件都经过精心设计和封装，具有良好的可扩展性和易用性，能够帮助开发者快速构建现代化的前端界面。
 
-```js
-ScriptLoader.loadScriptsByType("Map")
-  .then(() => console.log("按类型脚本加载完成"))
-  .catch((err) => console.error("加载失败", err));
+## 主要特性
+
+- **模块化设计**：每个组件都是独立的模块，可以根据需要按需引入
+- **版本管理**：支持组件的多版本管理，方便维护和升级
+- **易于集成**：提供简单易用的 API，便于快速集成到现有项目中
+- **轻量级**：组件库体积小，不会给项目带来过多负担
+- **跨浏览器支持**：兼容主流浏览器，确保一致的用户体验
+
+## 组件列表
+
+目前项目包含以下组件：
+
+- **ButtonGroup** - 功能丰富的下拉按钮组组件
+- **Loading** - 多种加载动画效果（包括钓鱼动画等）
+- **Message** - 消息提示组件（文字图标版和SVG图标版）
+- 以及其他多个实用组件
+
+## 使用方法
+
+### 1. 直接引入
+
+在 HTML 页面中直接引入打包好的组件库文件：
+
+```html
+<script src="Components/Components.all.js"></script>
 ```
 
-- 直接加载相对路径（会使用基础路径）：
+### 2. 通过 CDN 引入
 
-````js
-以下是时间轴组件（TimelineComponent）的使用示例与配置说明。本文档以示例为主，按场景分类，方便快速查阅与复制。
+```html
+<script src="https://cdn.jsdelivr.net/gh/crud1024/ng-script@main/Components/Components.all.js"></script>
+```
 
-目录
-- 基本用法
-- 状态样式
-- 节点形状
-- 配置项示例
-- 交互示例
-- 动态操作（增、改、删）
-- 特殊场景
-- 响应式与移动端
-- 完整示例（项目进度）
-- 多实例与生命周期
-- API 快速参考
+### 3. 访问组件
 
-1. 基本用法
-
-最简单的初始化与设置事件：
+组件加载完成后，可以通过以下方式访问：
 
 ```javascript
-// HTML: <div id="timeline1"></div>
-const timeline1 = new TimelineComponent('timeline1');
-timeline1.setEvents([
-  { title: '事件 1', description: '第一个事件', time: '2023-01-01', status: 'completed' },
-  { title: '事件 2', description: '第二个事件', time: '2023-02-01', status: 'incomplete' }
-]);
-````
+// 通过全局对象访问
+const ButtonGroup = window.$OSD["ButtonGroup-V1-ButtonGroup"];
+const Message = window.$OSD["Message-V2-Message"];
 
-垂直 / 水平 时间轴示例：
-
-```javascript
-const timeline2 = new TimelineComponent("timeline2", {
-  mode: "vertical",
-  position: "alternate",
-});
-const timeline3 = new TimelineComponent("timeline3", {
-  mode: "horizontal",
-  position: "top",
+// 创建按钮组实例
+new ButtonGroup("#element-id", {
+  // 配置选项
 });
 ```
 
-2. 状态样式
+## 目录结构
 
-常用状态与样式示例：
-
-```javascript
-const events = [
-  {
-    title: "已办事项",
-    time: "2023-01-01",
-    status: "completed",
-    color: "#52c41a",
-    completedStyle: "filled",
-  },
-  {
-    title: "待办事项",
-    time: "2023-02-01",
-    status: "pending",
-    color: "#faad14",
-    pendingStyle: "spinning",
-  },
-  {
-    title: "未办事项",
-    time: "2023-03-01",
-    status: "incomplete",
-    color: "#d9d9d9",
-    incompleteStyle: "outline",
-  },
-];
+```
+ng-script/
+├── Components/           # 组件库主目录
+│   ├── ButtonGroup/     # 按钮组组件
+│   ├── Loading/         # 加载动画组件
+│   ├── Message/         # 消息提示组件
+│   ├── Components.js    # 组件打包工具
+│   └── README.md        # 组件库使用文档
+├── Utils/               # 工具函数库
+└── README.md            # 项目主文档
 ```
 
-支持自定义图标或颜色：
+## 打包工具
 
-```javascript
-{ title: '测试阶段', description: '自定义图标', time: '2023-04-01', status: 'incomplete', icon: '🧪', color: '#ff4d4f' }
+项目提供了 [Components.js](file:///Users/carl/Desktop/GitHub/ng-script/ng-script/Components/Components.js) 工具，可以自动扫描 Components 目录下的所有组件，并将它们打包成一个文件。运行以下命令即可生成打包文件：
+
+```bash
+cd Components
+node Components.js
 ```
 
-3. 节点形状
+该命令会生成以下文件：
 
-支持常见点样式：`circle`（默认）、`rounded-rect`、`square`。
+- [Components.all.js](file:///Users/carl/Desktop/GitHub/ng-script/ng-script/Components/Components.all.js) - 包含所有组件的完整包
+- [Components.all.min.js](file:///Users/carl/Desktop/GitHub/ng-script/ng-script/Components/Components.all.min.js) - 压缩版本
 
-```javascript
-{ title: '方形节点', time: '2023-03-01', status: 'completed', dotStyle: 'square', color: '#faad14' }
-```
+## 业主方事业部使用文档
 
-4. 配置项示例
+### 概述
 
-完整配置示例（常用选项）：
+业主方事业部使用文档旨在帮助内部开发人员快速了解和使用ng-script组件库。本文档由王智锋（杜甫）维护，英文名Carl，如有问题请联系 crud1024@163.com。
 
-```javascript
-const timeline4 = new TimelineComponent("timeline4", {
-  mode: "vertical",
-  position: "alternate",
-  lineColor: "#e8e8e8",
-  lineWidth: 2,
-  dotSize: 12,
-  dotBorderWidth: 2,
-  completedStyle: "filled",
-  incompleteStyle: "outline",
-  pendingStyle: "spinning",
-  reverse: false,
-  maxEvents: 50,
-  dateFormat: "YYYY-MM-DD HH:mm",
-  showTooltips: true,
-  clickable: true,
-  animation: true,
-  pending: "更多事件...",
-});
-```
+### 快速开始
 
-不同布局：`position: 'left' | 'right' | 'alternate'`。
+对于业主方事业部内部项目，推荐使用以下方式引入组件库：
 
-5. 交互示例
+```html
+<!-- 内部CDN引入 -->
+<script src="./Components.all.js"></script>
 
-点击事件与标题点击：
+<script>
+  // 等待组件库加载完成
+  $NG.AllReady(
+    function () {
+      console.log("组件库已就绪");
 
-```javascript
-const interactiveTimeline = new TimelineComponent("interactiveTimeline", {
-  clickable: true,
-});
-interactiveTimeline.setEvents([
-  {
-    title: "可点击事件",
-    time: "2023-01-01",
-    status: "completed",
-    onClick: (event, e) => {
-      console.log("点击事件:", event);
-      alert(`点击了: ${event.title}`);
+      // 访问组件
+      const buttonGroup = $OSD["ButtonGroup-V1-ButtonGroup"];
+      const message = $OSD["Message-V2-Message"];
+      const loading = $OSD["Loading-V2-Loading"];
+
+      // 示例：创建按钮组
+      new buttonGroup("#my-element", {
+        menuItems: [
+          { text: "选项1", onClick: () => console.log("点击选项1") },
+          { text: "选项2", onClick: () => console.log("点击选项2") },
+        ],
+      });
     },
-  },
-  {
-    title: "标题可点击",
-    time: "2023-02-01",
-    status: "incomplete",
-    onTitleClick: (event, e) => {
-      e.stopPropagation();
-      console.log("点击标题:", event.title);
+    function () {
+      console.log("准备就绪");
     },
-  },
-]);
-
-// API 绑定单个事件点击
-timeline.onEventClick("event-id", (event, e) => {
-  console.log("API 方式绑定点击:", event);
-});
+  );
+</script>
 ```
 
-工具提示示例：设置 `tooltip` 或启用 `showTooltips`。
+### 内部组件访问
 
-6. 动态操作（添加 / 更新 / 删除）
+所有组件都可以通过 `window.$OSD` 对象访问，组件名称采用连字符格式（例如：`ComponentName-Version-ComponentName`）：
 
-```javascript
-// 初始化
-dynamicTimeline.setEvents([
-  { title: "初始事件 1", time: "2023-01-01", status: "completed" },
-]);
+- 按钮组：`$OSD["ButtonGroup-V1-ButtonGroup"]`
+- 加载动画：`$OSD["Loading-V1-FishingAnimation"]` 或 `$OSD["Loading-V2-Loading"]`
+- 消息提示：`$OSD["Message-V1-Message"]` 或 `$OSD["Message-V2-Message"]`
 
-// 添加
-const newEventId = dynamicTimeline.addEvent(
-  {
-    title: "新增事件",
-    time: "2023-02-01",
-    status: "pending",
-    color: "#faad14",
-  },
-  (event) => {
-    console.log("新增事件被点击:", event.title);
-  }
-);
+### 内部最佳实践
 
-// 更新
-dynamicTimeline.updateEventStatus(newEventId, "completed");
-dynamicTimeline.updateEvent(newEventId, {
-  title: "更新后的标题",
-  description: "新增描述信息",
-  color: "#52c41a",
-});
+1. **组件选择**：优先使用V2版本的组件，如Message V2（SVG图标版）
+2. **性能优化**：按需引入所需组件，避免加载不必要的功能
+3. **错误处理**：始终在组件使用前检查其是否存在
+4. **样式定制**：如需定制组件样式，请遵循设计规范
 
-// 删除
-dynamicTimeline.removeEvent(newEventId);
-```
+### 技术支持
 
-7. 特殊场景
+如在使用过程中遇到问题，请联系：
 
-- 待办提示：`pending` 可以是字符串或 DOM 节点。
-- 倒序显示：`reverse: true`。
-- 自定义日期格式：`dateFormat: 'YYYY 年 MM 月 DD 日 HH:mm:ss'` 或 `'relative'`。
+- 联系人：王智锋（杜甫）
+- 英文名：Carl
+- 邮箱：crud1024@163.com
+- 项目地址：https://github.com/crud1024/ng-script
 
-8. 响应式与移动端
+### 版本管理
 
-根据窗口宽度切换模式，并在 `resize` 事件中调用 `updateOptions`：
+业主方事业部使用的组件版本会定期同步最新稳定版本，版本更新前会提前通知相关团队。
 
-```javascript
-window.addEventListener("resize", () => {
-  responsiveTimeline.updateOptions({
-    mode: window.innerWidth > 768 ? "vertical" : "horizontal",
-  });
-});
-```
+## 贡献
 
-9. 完整示例：项目进度时间轴（简化）
+欢迎提交 Issue 和 Pull Request 来帮助改进这个项目。
 
-```javascript
-const projectTimeline = new TimelineComponent("projectTimeline", {
-  mode: "vertical",
-  position: "alternate",
-  dateFormat: "YYYY-MM-DD",
-  showTooltips: true,
-  clickable: true,
-});
-projectTimeline.setEvents([
-  {
-    id: "project-start",
-    title: "项目启动",
-    time: "2023-01-05",
-    status: "completed",
-    color: "#1890ff",
-    tooltip: "项目正式启动",
-  },
-  {
-    id: "ui-design",
-    title: "UI 设计",
-    time: "2023-02-10",
-    status: "pending",
-    color: "#faad14",
-    pendingStyle: "spinning",
-  },
-]);
+## 许可证
 
-// 动态更新示例
-setTimeout(() => {
-  projectTimeline.updateEventStatus("ui-design", "completed");
-}, 5000);
-```
-
-10. 多实例与生命周期
-
-支持多个实例并分别管理数据；使用 `destroy()` 清理资源：
-
-```javascript
-const temp = new TimelineComponent("tempTimeline");
-temp.destroy();
-```
-
-11. API 快速参考
-
-- `new TimelineComponent(id, options)`：创建实例。
-- `setEvents(events)`：设置事件数组。
-- `getEvents()` / `getEvent(id)`：读取事件。
-- `addEvent(event, onClick)`：添加事件，返回 id。
-- `updateEvent(id, data)` / `updateEventStatus(id, status)`：更新事件。
-- `removeEvent(id)`：删除事件。
-- `onEventClick(id, handler)`：按事件 id 绑定点击。
-- `updateOptions(opts)`：更新配置。
-- `destroy()`：销毁实例，清理资源。
-
-更多示例请参考组件目录下的示例代码与注释（Components/TimeShaft 等）。
-
-——
-已将原始示例整理为章节化、可复制的代码块，去除重复项并保留关键配置与示例。欢迎告知是否需要：
-
-- 增加中文/英文对照说明
-- 生成简短 API 表格
-- 将示例抽成可运行的 demo 页面
+MIT License
