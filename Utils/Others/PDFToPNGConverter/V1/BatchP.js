@@ -71,6 +71,7 @@ class BatchPDFToPNGConverter {
       // 构建单个文件的URL
       const url = this.buildSingleFileUrl(item);
       console.log("文件URL:", url);
+
       // 下载文件
       const response = await fetch(url);
 
@@ -80,24 +81,135 @@ class BatchPDFToPNGConverter {
 
       // 获取文件数据
       const blob = await response.blob();
-      console.log("文件类型:", blob.type);
+      console.log("原始文件类型:", blob.type);
       console.log("文件大小:", blob.size);
 
-      // 验证是否为PDF
-      if (
-        !blob.type.includes("pdf") &&
-        !blob.type.includes("application/pdf")
-      ) {
-        throw new Error(`文件不是PDF格式: ${blob.type}`);
+      // 处理ZIP文件
+      if (blob.type.includes("zip") || blob.type.includes("application/zip")) {
+        console.log("检测到ZIP文件，尝试解压并提取PDF");
+        await this.handleZipFile(blob, item);
       }
-
-      // 转换PDF为PNG
-      await this.convertSinglePDF(blob, item);
+      // 处理PDF文件
+      else if (
+        blob.type.includes("pdf") ||
+        blob.type.includes("application/pdf")
+      ) {
+        console.log("检测到PDF文件，直接处理");
+        await this.convertSinglePDF(blob, item);
+      } else {
+        throw new Error(`不支持的文件格式: ${blob.type}`);
+      }
 
       this.successCount++;
     } catch (error) {
       console.error(`处理单据 ${index + 1} 失败:`, error);
       this.failCount++;
+    }
+  }
+
+  /**
+   * 处理ZIP文件
+   */
+  async handleZipFile(zipBlob, item) {
+    try {
+      // 加载JSZip库
+      await this.loadJSZip();
+
+      // 解压ZIP文件
+      const zip = await JSZip.loadAsync(zipBlob);
+
+      // 查找ZIP中的PDF文件
+      const pdfFiles = Object.keys(zip.files).filter((filename) =>
+        filename.toLowerCase().endsWith(".pdf"),
+      );
+
+      if (pdfFiles.length === 0) {
+        throw new Error("ZIP文件中未找到PDF文件");
+      }
+
+      console.log(`在ZIP中找到 ${pdfFiles.length} 个PDF文件:`, pdfFiles);
+
+      // 处理每个PDF文件
+      for (const filename of pdfFiles) {
+        const pdfFile = zip.files[filename];
+        if (!pdfFile.dir) {
+          const pdfBlob = await pdfFile.async("blob");
+          console.log(
+            `提取PDF: ${filename}, 类型: ${pdfBlob.type}, 大小: ${pdfBlob.size}`,
+          );
+
+          // 转换提取的PDF
+          await this.convertSinglePDF(pdfBlob, {
+            ...item,
+            u_zwmc: filename.replace(".pdf", ""), // 使用ZIP中的文件名
+          });
+        }
+      }
+    } catch (error) {
+      console.error("处理ZIP文件失败:", error);
+      throw new Error(`ZIP文件处理失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 加载JSZip库
+   */
+  async loadJSZip() {
+    if (window.JSZip) {
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("JSZip库加载失败"));
+
+      document.head.appendChild(script);
+    });
+  }
+
+  /**
+   * 转换单个PDF
+   */
+  async convertSinglePDF(blob, item) {
+    // 转换为ArrayBuffer
+    const arrayBuffer = await this.blobToArrayBuffer(blob);
+
+    // 检查PDF有效性
+    if (!this.isValidPDF(arrayBuffer)) {
+      throw new Error("无效的PDF文件");
+    }
+
+    // 加载PDF
+    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+
+    // 生成文件名
+    const baseFilename = item.u_zwmc || "资质证书";
+    const cleanName = this.cleanFilename(baseFilename);
+    const uniqueId = item.u_cert_name_level || Date.now().toString();
+
+    // 转换每一页
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      await this.convertPage(pdf, pageNum, cleanName, uniqueId);
+    }
+  }
+
+  /**
+   * 检查PDF有效性
+   */
+  isValidPDF(arrayBuffer) {
+    try {
+      const uint8Array = new Uint8Array(arrayBuffer);
+      // 检查PDF文件头（%PDF）
+      const header = String.fromCharCode(...uint8Array.slice(0, 4));
+      return header === "%PDF";
+    } catch (error) {
+      console.error("PDF有效性检查失败:", error);
+      return false;
     }
   }
 
