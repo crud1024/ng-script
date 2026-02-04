@@ -1,8 +1,8 @@
 /**
  * 批量PDF转PNG转换器 - 支持文件夹结构和压缩下载
- * 版本：V3.0
+ * 版本：V3.1
  * 功能：批量处理PDF文件，按明细分文件夹，最后压缩成ZIP下载
- * 优化：解决水印重叠问题，添加自定义进度条
+ * 优化：解决水印重叠问题，添加自定义进度条，支持水印换行
  */
 class BatchPDFToPNGConverter {
   /**
@@ -29,6 +29,8 @@ class BatchPDFToPNGConverter {
         ySpacing: options.watermarkOptions?.ySpacing || 200, // 增加间距避免重叠
         offsetX: options.watermarkOptions?.offsetX || 0,
         offsetY: options.watermarkOptions?.offsetY || 0,
+        lineBreakLength: options.watermarkOptions?.lineBreakLength || 25, // 新增：换行长度限制
+        lineHeight: options.watermarkOptions?.lineHeight || 1.5, // 新增：行高
         ...options.watermarkOptions,
       },
       baseUrl: options.baseUrl || window.location.origin,
@@ -107,8 +109,13 @@ class BatchPDFToPNGConverter {
 
       // 显示水印信息
       if (this.options.watermark) {
-        console.log(`将添加水印: "${this.options.watermark}"`);
-        this.updateStatus(`将添加水印: "${this.options.watermark}"`);
+        const breakLength = this.options.watermarkOptions.lineBreakLength;
+        console.log(
+          `将添加水印: "${this.options.watermark}" (${breakLength}字换行)`,
+        );
+        this.updateStatus(
+          `将添加水印: "${this.options.watermark}" (${breakLength}字换行)`,
+        );
       } else {
         console.log("不添加水印");
         this.updateStatus("不添加水印");
@@ -723,14 +730,23 @@ class BatchPDFToPNGConverter {
   }
 
   /**
-   * 添加水印到Canvas（优化版，避免重叠）
+   * 添加水印到Canvas（优化版，避免重叠，支持换行）
    */
   addWatermarkToCanvas(canvas, context) {
     if (!this.options.watermark) return;
 
     const { watermark, watermarkOptions } = this.options;
-    const { fontSize, color, angle, xSpacing, ySpacing, offsetX, offsetY } =
-      watermarkOptions;
+    const {
+      fontSize,
+      color,
+      angle,
+      xSpacing,
+      ySpacing,
+      offsetX,
+      offsetY,
+      lineBreakLength,
+      lineHeight,
+    } = watermarkOptions;
 
     // 保存当前上下文状态
     context.save();
@@ -741,14 +757,25 @@ class BatchPDFToPNGConverter {
     context.textAlign = "center";
     context.textBaseline = "middle";
 
-    // 测量水印文字宽度
-    const textMetrics = context.measureText(watermark);
-    const textWidth = textMetrics.width;
-    const textHeight = fontSize;
+    // 处理水印文本，根据换行长度分割
+    const watermarkLines = this.splitWatermarkText(watermark, lineBreakLength);
+
+    // 计算每行的高度
+    const lineHeightPx = fontSize * lineHeight;
+
+    // 测量最宽的一行文本宽度
+    let maxTextWidth = 0;
+    watermarkLines.forEach((line) => {
+      const textMetrics = context.measureText(line);
+      maxTextWidth = Math.max(maxTextWidth, textMetrics.width);
+    });
+
+    // 计算整个水印块的高度
+    const totalTextHeight = lineHeightPx * watermarkLines.length;
 
     // 计算实际间距（基于文字大小）
-    const actualXSpacing = Math.max(xSpacing, textWidth * 1.5);
-    const actualYSpacing = Math.max(ySpacing, textHeight * 2);
+    const actualXSpacing = Math.max(xSpacing, maxTextWidth * 1.5);
+    const actualYSpacing = Math.max(ySpacing, totalTextHeight * 1.5);
 
     // 旋转画布
     context.translate(canvas.width / 2 + offsetX, canvas.height / 2 + offsetY);
@@ -770,16 +797,74 @@ class BatchPDFToPNGConverter {
 
         // 确保水印在画布范围内
         if (
-          Math.abs(x) < halfWidth + textWidth / 2 &&
-          Math.abs(y) < halfHeight + textHeight / 2
+          Math.abs(x) < halfWidth + maxTextWidth / 2 &&
+          Math.abs(y) < halfHeight + totalTextHeight / 2
         ) {
-          context.fillText(watermark, x, y);
+          // 绘制多行水印
+          watermarkLines.forEach((line, lineIndex) => {
+            const lineY =
+              y + (lineIndex - (watermarkLines.length - 1) / 2) * lineHeightPx;
+            context.fillText(line, x, lineY);
+          });
         }
       }
     }
 
     // 恢复上下文状态
     context.restore();
+  }
+
+  /**
+   * 分割水印文本，按指定长度换行
+   * @param {string} text 原始文本
+   * @param {number} lineBreakLength 每行最大长度
+   * @returns {Array} 分割后的行数组
+   */
+  splitWatermarkText(text, lineBreakLength = 25) {
+    if (!text || lineBreakLength <= 0) return [text || ""];
+
+    const result = [];
+    let currentLine = "";
+
+    // 处理中文字符，一个汉字算一个字符
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      currentLine += char;
+
+      // 如果达到换行长度，或者遇到标点符号且长度超过一半
+      if (currentLine.length >= lineBreakLength) {
+        // 检查下一个字符是否是标点或空格，避免在单词中间换行
+        if (i + 1 < text.length) {
+          const nextChar = text[i + 1];
+          const isPunctuation = /[，。；：！？、,.;:!?\s]/.test(char);
+          const nextIsPunctuation = /[，。；：！？、,.;:!?\s]/.test(nextChar);
+
+          if (
+            isPunctuation ||
+            nextIsPunctuation ||
+            currentLine.length >= lineBreakLength * 1.2
+          ) {
+            result.push(currentLine.trim());
+            currentLine = "";
+          }
+        } else {
+          result.push(currentLine.trim());
+          currentLine = "";
+        }
+      }
+    }
+
+    // 添加最后一行
+    if (currentLine.trim()) {
+      result.push(currentLine.trim());
+    }
+
+    // 如果结果为空，返回原始文本
+    if (result.length === 0) {
+      result.push(text);
+    }
+
+    return result;
   }
 
   /**
@@ -891,7 +976,7 @@ class BatchPDFToPNGConverter {
         compressionOptions: {
           level: 6,
         },
-        comment: `生成时间: ${new Date().toLocaleString()}\n总文件数: ${this.totalImages}\n一级文件夹: ${this.options.parentFolderName}\n水印: ${this.options.watermark || "无"}`,
+        comment: `生成时间: ${new Date().toLocaleString()}\n总文件数: ${this.totalImages}\n一级文件夹: ${this.options.parentFolderName}\n水印: ${this.options.watermark || "无"}\n换行长度: ${this.options.watermarkOptions.lineBreakLength}字`,
       });
 
       this.updateProgress(95, "ZIP文件生成完成，开始下载...");
@@ -989,7 +1074,7 @@ class BatchPDFToPNGConverter {
     const duration = Math.round((endTime - this.startTime) / 1000);
 
     const watermarkText = this.options.watermark
-      ? `水印: "${this.options.watermark}"`
+      ? `水印: "${this.options.watermark}" (${this.options.watermarkOptions.lineBreakLength}字换行)`
       : "水印: 无";
     const resultText = `处理完成！
 总单据: ${this.options.dataList.length}个
@@ -1093,8 +1178,9 @@ ${watermarkText}
       failCount: this.failCount,
       totalImages: this.totalImages,
       errors: this.errors,
-      watermark: this.options.watermark, // 返回水印配置
+      watermark: this.options.watermark,
       watermarkOptions: this.options.watermarkOptions,
+      lineBreakLength: this.options.watermarkOptions.lineBreakLength, // 返回换行长度
     };
   }
 
@@ -1129,6 +1215,32 @@ ${watermarkText}
       this.createProgressBar();
     } else if (!show && this.progressContainer) {
       this.removeProgressBar();
+    }
+  }
+
+  /**
+   * 设置换行长度
+   * @param {number} length 每行最大字符数
+   */
+  setLineBreakLength(length) {
+    if (typeof length === "number" && length > 0) {
+      this.options.watermarkOptions.lineBreakLength = length;
+      console.log(`换行长度已设置为: ${length}字`);
+    } else {
+      console.warn("换行长度必须为正整数");
+    }
+  }
+
+  /**
+   * 设置行高
+   * @param {number} height 行高倍数
+   */
+  setLineHeight(height) {
+    if (typeof height === "number" && height > 0) {
+      this.options.watermarkOptions.lineHeight = height;
+      console.log(`行高已设置为: ${height}`);
+    } else {
+      console.warn("行高必须为正数");
     }
   }
 }
