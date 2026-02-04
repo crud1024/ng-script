@@ -80,9 +80,6 @@ class BatchPDFToPNGConverter {
 
       // 获取文件数据
       const blob = await response.blob();
-      
-      // 关键改进：强制设置文件名用于类型检测
-      blob.name = item.u_zwmc || "unknown_file";
 
       // 根据文件类型进行相应处理
       await this.handleFileByType(blob, item);
@@ -95,38 +92,17 @@ class BatchPDFToPNGConverter {
   }
 
   /**
-   * 根据文件类型处理文件 - 增强版
+   * 根据文件类型处理文件
    */
   async handleFileByType(blob, item) {
     const fileType = this.getFileType(blob);
-    const fileName = item.u_zwmc || "unknown";
-
-    this.showProgress(
-      this.currentIndex + 1,
-      this.options.dataList.length,
-      `检测到文件类型: ${fileType} (${fileName})`
-    );
-
-    // 记录详细的类型检测信息
-    console.log(`文件分析详情:`, {
-      fileName: fileName,
-      mimeType: blob.type,
-      detectedType: fileType,
-      fileSize: blob.size
-    });
 
     switch (fileType) {
       case "pdf":
         await this.convertSinglePDF(blob, item);
         break;
       case "zip":
-        // 对于ZIP类型，首先尝试PDF内容检测
-        if (await this.isPdfByContent(blob)) {
-          console.warn(`警告: 文件${fileName}被标记为ZIP，但内容检测为PDF，将按PDF处理`);
-          await this.convertSinglePDF(blob, item);
-        } else {
-          await this.handleZipFile(blob, item);
-        }
+        await this.handleZipFile(blob, item);
         break;
       case "image":
         await this.convertImageToPNG(blob, item);
@@ -141,58 +117,37 @@ class BatchPDFToPNGConverter {
         await this.convertExcelToPNG(blob, item);
         break;
       default:
-        // 最后的兜底方案：尝试PDF内容检测
+        // 尝试通过文件内容检测是否为PDF
         if (await this.isPdfByContent(blob)) {
-          console.warn(`警告: 未知类型${blob.type}，但内容检测为PDF，将按PDF处理`);
           await this.convertSinglePDF(blob, item);
-        } else if (fileName.toLowerCase().endsWith('.pdf')) {
-          // 如果文件名是.pdf，强制尝试PDF处理
-          console.warn(`警告: 文件名为PDF但类型未知，强制尝试PDF处理`);
-          try {
-            await this.convertSinglePDF(blob, item);
-          } catch (pdfError) {
-            throw new Error(`文件${fileName}看起来像PDF但无法处理: ${pdfError.message}`);
-          }
         } else {
-          throw new Error(`不支持的文件类型: ${blob.type || "unknown"} (文件名: ${fileName})`);
+          throw new Error(`不支持的文件类型: ${blob.type || "unknown"}`);
         }
     }
   }
 
   /**
-   * 获取文件类型 - 增强版
+   * 获取文件类型
    */
   getFileType(blob) {
     const mimeType = blob.type.toLowerCase();
-    const fileName = (blob.name || "").toLowerCase();
-    
-    console.log(`类型检测 - MIME: ${mimeType}, 文件名: ${fileName}`);
+    const fileName = blob.name ? blob.name.toLowerCase() : "";
 
-    // PDF文件 - 多重检测策略
+    // PDF文件 - 改进检测逻辑
     if (
       mimeType.includes("pdf") ||
       mimeType.includes("application/pdf") ||
       fileName.includes(".pdf")
     ) {
-      // 即使MIME类型是ZIP，如果文件名是PDF，仍然标记为PDF
-      if (mimeType.includes("zip") && fileName.includes(".pdf")) {
-        console.warn(`检测到MIME类型冲突: ${mimeType} vs 文件名: ${fileName}`);
-        return "pdf"; // 优先信任文件名
-      }
       return "pdf";
     }
 
-    // ZIP文件 - 但排除可能是PDF的情况
+    // ZIP文件 - 可能是压缩的PDF或其他文件
     if (
       mimeType.includes("zip") ||
       mimeType.includes("application/zip") ||
       fileName.includes(".zip")
     ) {
-      // 如果文件名暗示是PDF，不标记为ZIP
-      if (fileName.includes(".pdf")) {
-        console.warn(`ZIP MIME但文件名含PDF，暂标记为unknown等待进一步检测`);
-        return "unknown";
-      }
       return "zip";
     }
 
@@ -568,48 +523,26 @@ class BatchPDFToPNGConverter {
   }
 
   /**
-   * 通过文件内容检测是否为PDF - 增强版
+   * 通过文件内容检测是否为PDF
    */
   async isPdfByContent(blob) {
     try {
-      // 读取更大的样本以提高准确性
-      const sampleSize = Math.min(4096, blob.size); // 读取前4KB
-      const arrayBuffer = await this.blobToArrayBuffer(blob.slice(0, sampleSize));
+      const arrayBuffer = await this.blobToArrayBuffer(blob.slice(0, 1024)); // 只读取前1024字节
       const uint8Array = new Uint8Array(arrayBuffer);
-      
+      const pdfHeader = "%PDF-";
+
       // 检查PDF文件头
-      const pdfSignatures = [
-        [0x25, 0x50, 0x44, 0x46, 0x2D], // %PDF-
-        [0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E] // %PDF-1.
-      ];
-      
-      for (const signature of pdfSignatures) {
-        if (uint8Array.length >= signature.length) {
-          let matches = true;
-          for (let i = 0; i < signature.length; i++) {
-            if (uint8Array[i] !== signature[i]) {
-              matches = false;
-              break;
-            }
-          }
-          if (matches) {
-            console.log(`PDF内容检测成功: 找到签名 ${String.fromCharCode(...signature)}`);
-            return true;
-          }
+      let isPdf = true;
+      for (let i = 0; i < pdfHeader.length; i++) {
+        if (uint8Array[i] !== pdfHeader.charCodeAt(i)) {
+          isPdf = false;
+          break;
         }
       }
-      
-      // 额外检查：寻找PDF对象引用模式
-      const contentString = String.fromCharCode(...uint8Array.slice(0, Math.min(100, uint8Array.length)));
-      if (contentString.includes('obj') && contentString.includes('endobj')) {
-        console.log('PDF内容检测成功: 找到PDF对象结构');
-        return true;
-      }
-      
-      console.log('PDF内容检测失败: 未找到有效PDF签名');
-      return false;
+
+      return isPdf;
     } catch (error) {
-      console.error("PDF内容检测异常:", error);
+      console.error("PDF内容检测失败:", error);
       return false;
     }
   }

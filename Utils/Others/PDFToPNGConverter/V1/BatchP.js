@@ -70,7 +70,7 @@ class BatchPDFToPNGConverter {
 
       // 构建单个文件的URL
       const url = this.buildSingleFileUrl(item);
-
+      console.log("文件URL:", url);
       // 下载文件
       const response = await fetch(url);
 
@@ -80,6 +80,8 @@ class BatchPDFToPNGConverter {
 
       // 获取文件数据
       const blob = await response.blob();
+      console.log("文件类型:", blob.type);
+      console.log("文件大小:", blob.size);
 
       // 验证是否为PDF
       if (
