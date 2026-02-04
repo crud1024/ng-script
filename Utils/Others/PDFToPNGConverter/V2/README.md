@@ -9,17 +9,19 @@
 - **PDF文件** - 转换每一页为单独的PNG图片
 - **图片文件** - JPG、PNG、GIF、BMP等格式转换为PNG
 - **Word文档** - DOC、DOCX格式（简化处理）
-- **PPT文档** - PPT、PPTX格式（简化处理）  
+- **PPT文档** - PPT、PPTX格式（简化处理）
 - **Excel文档** - XLS、XLSX格式（简化处理）
+- **ZIP文件** - 压缩包格式（简化处理）
 
 ### 主要特性
 
 - 🔄 批量处理多个文件
-- 🎯 自动识别文件类型
+- 🎯 智能文件类型识别（MIME类型 + 文件名 + 内容检测）
 - 💾 支持自定义水印
 - 📊 实时进度显示
 - 🌐 基于浏览器的客户端处理
 - ⚡ 智能库加载（按需加载PDF.js）
+- 🔍 文件内容深度检测（解决MIME类型不准确问题）
 
 ## 使用方法
 
@@ -28,27 +30,27 @@
 ```javascript
 // 创建转换器实例
 const converter = new BatchPDFToPNGConverter({
-    dataList: [
-        {
-            u_cert_name_level: "文件ID",
-            u_zwmc: "文件名.pdf", 
-            u_zswj: "文件标识"
-        }
-    ],
-    logo: "水印文字",
-    baseUrl: "https://your-domain.com",
-    scale: 2.0  // PDF渲染缩放比例
+  dataList: [
+    {
+      u_cert_name_level: "文件ID",
+      u_zwmc: "文件名.pdf",
+      u_zswj: "文件标识",
+    },
+  ],
+  logo: "水印文字",
+  baseUrl: "https://your-domain.com",
+  scale: 2.0, // PDF渲染缩放比例
 });
 ```
 
 ### 配置选项
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `dataList` | Array | `[]` | 待转换的文件数据列表 |
-| `logo` | String | `""` | 水印文字 |
-| `baseUrl` | String | `window.location.origin` | 基础URL |
-| `scale` | Number | `2.0` | PDF渲染缩放比例 |
+| 参数       | 类型   | 默认值                   | 说明                 |
+| ---------- | ------ | ------------------------ | -------------------- |
+| `dataList` | Array  | `[]`                     | 待转换的文件数据列表 |
+| `logo`     | String | `""`                     | 水印文字             |
+| `baseUrl`  | String | `window.location.origin` | 基础URL              |
+| `scale`    | Number | `2.0`                    | PDF渲染缩放比例      |
 
 ### 数据格式
 
@@ -65,34 +67,55 @@ const converter = new BatchPDFToPNGConverter({
 ## 文件类型处理说明
 
 ### PDF文件
+
 - 使用PDF.js库进行解析
 - 每页生成一张PNG图片
 - 支持自定义渲染质量
 
 ### 图片文件
+
 - 直接转换为PNG格式
 - 保持原始尺寸
 - 支持常见图片格式
 
 ### Office文档
+
 - Word/PPT/Excel文档生成占位图片
 - 显示文档类型标识
 - 如需完整转换，建议集成专业转换库
 
-## 错误处理
+### ZIP文件
 
-转换过程中会自动处理以下情况：
+- 生成ZIP文件类型的占位图片
+- 如需解压处理，建议集成JSZip等库
 
-- ❌ 文件下载失败
-- ❌ 不支持的文件格式
-- ❌ PDF.js库加载失败
-- ❌ 文件读取错误
+## 错误处理与调试
 
-所有错误都会在控制台显示详细信息。
+### 常见问题解决
+
+1. **"不支持的文件类型"错误**
+   - 使用 `debug.html` 调试工具分析文件
+   - 检查文件的实际MIME类型
+   - 验证文件扩展名是否正确
+
+2. **PDF文件被识别为ZIP**
+   - 这通常是因为服务器返回了错误的MIME类型
+   - 转换器现在支持通过文件内容检测真实格式
+   - 会自动尝试内容检测来解决此类问题
+
+### 调试工具
+
+提供了两个调试页面：
+
+- `example.html` - 基本使用示例
+- `debug.html` - 文件类型分析和问题诊断工具
 
 ## 使用示例
 
-请查看 [example.html](./example.html) 文件获取完整的使用示例。
+请查看以下文件获取完整的使用示例：
+
+- [example.html](./example.html) - 基本使用示例
+- [debug.html](./debug.html) - 调试和诊断工具
 
 ## 注意事项
 
@@ -101,9 +124,26 @@ const converter = new BatchPDFToPNGConverter({
 3. **Office文档**：当前版本对Office文档的处理较为简化
 4. **网络请求**：需要能够访问指定的文件URL
 
+## 注意事项
+
+1. **浏览器兼容性**：需要现代浏览器支持Canvas和Fetch API
+2. **文件大小限制**：大文件可能影响性能
+3. **Office文档**：当前版本对Office文档的处理较为简化
+4. **网络请求**：需要能够访问指定的文件URL
+5. **MIME类型**：服务器返回的MIME类型可能不准确，现已添加内容检测作为后备方案
+
 ## 更新日志
 
+### V2.1 增强版（最新）
+
+- ✅ 新增ZIP文件支持
+- ✅ 文件内容深度检测（解决MIME类型不准确问题）
+- ✅ 添加调试工具帮助诊断问题
+- ✅ 改进文件类型识别算法
+- ✅ 更完善的错误处理机制
+
 ### V2.0 增强版
+
 - ✅ 新增多格式文件支持（图片、Word、PPT、Excel）
 - ✅ 智能文件类型识别
 - ✅ 按需加载PDF.js库
@@ -111,6 +151,7 @@ const converter = new BatchPDFToPNGConverter({
 - ✅ 更友好的用户反馈
 
 ### V1.0 基础版
+
 - ✅ 基础PDF转PNG功能
 - ✅ 批量处理支持
 - ✅ 进度显示功能

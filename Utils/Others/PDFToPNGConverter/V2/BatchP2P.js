@@ -96,25 +96,33 @@ class BatchPDFToPNGConverter {
    */
   async handleFileByType(blob, item) {
     const fileType = this.getFileType(blob);
-    
+
     switch (fileType) {
-      case 'pdf':
+      case "pdf":
         await this.convertSinglePDF(blob, item);
         break;
-      case 'image':
+      case "zip":
+        await this.handleZipFile(blob, item);
+        break;
+      case "image":
         await this.convertImageToPNG(blob, item);
         break;
-      case 'word':
+      case "word":
         await this.convertWordToPNG(blob, item);
         break;
-      case 'powerpoint':
+      case "powerpoint":
         await this.convertPowerPointToPNG(blob, item);
         break;
-      case 'excel':
+      case "excel":
         await this.convertExcelToPNG(blob, item);
         break;
       default:
-        throw new Error(`不支持的文件类型: ${blob.type}`);
+        // 尝试通过文件内容检测是否为PDF
+        if (await this.isPdfByContent(blob)) {
+          await this.convertSinglePDF(blob, item);
+        } else {
+          throw new Error(`不支持的文件类型: ${blob.type || "unknown"}`);
+        }
     }
   }
 
@@ -123,42 +131,74 @@ class BatchPDFToPNGConverter {
    */
   getFileType(blob) {
     const mimeType = blob.type.toLowerCase();
-    
-    // PDF文件
-    if (mimeType.includes('pdf') || mimeType.includes('application/pdf')) {
-      return 'pdf';
+    const fileName = blob.name ? blob.name.toLowerCase() : "";
+
+    // PDF文件 - 改进检测逻辑
+    if (
+      mimeType.includes("pdf") ||
+      mimeType.includes("application/pdf") ||
+      fileName.includes(".pdf")
+    ) {
+      return "pdf";
     }
-    
+
+    // ZIP文件 - 可能是压缩的PDF或其他文件
+    if (
+      mimeType.includes("zip") ||
+      mimeType.includes("application/zip") ||
+      fileName.includes(".zip")
+    ) {
+      return "zip";
+    }
+
     // 图片文件
-    if (mimeType.startsWith('image/')) {
-      return 'image';
+    if (mimeType.startsWith("image/")) {
+      return "image";
     }
-    
+
     // Word文档
-    if (mimeType.includes('word') || 
-        mimeType.includes('doc') || 
-        mimeType.includes('application/msword') ||
-        mimeType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
-      return 'word';
+    if (
+      mimeType.includes("word") ||
+      mimeType.includes("doc") ||
+      mimeType.includes("application/msword") ||
+      mimeType.includes(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ) ||
+      fileName.includes(".doc") ||
+      fileName.includes(".docx")
+    ) {
+      return "word";
     }
-    
+
     // PowerPoint文件
-    if (mimeType.includes('powerpoint') || 
-        mimeType.includes('ppt') || 
-        mimeType.includes('application/vnd.ms-powerpoint') ||
-        mimeType.includes('application/vnd.openxmlformats-officedocument.presentationml.presentation')) {
-      return 'powerpoint';
+    if (
+      mimeType.includes("powerpoint") ||
+      mimeType.includes("ppt") ||
+      mimeType.includes("application/vnd.ms-powerpoint") ||
+      mimeType.includes(
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ) ||
+      fileName.includes(".ppt") ||
+      fileName.includes(".pptx")
+    ) {
+      return "powerpoint";
     }
-    
+
     // Excel文件
-    if (mimeType.includes('excel') || 
-        mimeType.includes('xls') || 
-        mimeType.includes('application/vnd.ms-excel') ||
-        mimeType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
-      return 'excel';
+    if (
+      mimeType.includes("excel") ||
+      mimeType.includes("xls") ||
+      mimeType.includes("application/vnd.ms-excel") ||
+      mimeType.includes(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ) ||
+      fileName.includes(".xls") ||
+      fileName.includes(".xlsx")
+    ) {
+      return "excel";
     }
-    
-    return 'unknown';
+
+    return "unknown";
   }
 
   /**
@@ -242,13 +282,13 @@ class BatchPDFToPNGConverter {
     // 这里是一个简化的实现，实际应用中可能需要使用专门的库
     // 如 mammoth.js 或 docx-preview 来处理Word文档
     console.warn("Word文档转换功能需要额外的库支持");
-    
+
     // 创建一个占位图片表示Word文档
     const canvas = document.createElement("canvas");
     canvas.width = 800;
     canvas.height = 600;
     const context = canvas.getContext("2d");
-    
+
     // 绘制简单的Word文档图标
     context.fillStyle = "#4285F4";
     context.fillRect(0, 0, 800, 600);
@@ -256,12 +296,12 @@ class BatchPDFToPNGConverter {
     context.font = "48px Arial";
     context.textAlign = "center";
     context.fillText("Word文档", 400, 300);
-    
+
     const pngDataUrl = canvas.toDataURL("image/png");
     const baseFilename = item.u_zwmc || "Word文档";
     const cleanName = this.cleanFilename(baseFilename);
     const filename = `${cleanName}_${item.u_cert_name_level || "word"}.png`;
-    
+
     this.downloadFile(pngDataUrl, filename);
   }
 
@@ -270,25 +310,25 @@ class BatchPDFToPNGConverter {
    */
   async convertPowerPointToPNG(blob, item) {
     console.warn("PowerPoint转换功能需要额外的库支持");
-    
+
     // 创建一个占位图片表示PPT文档
     const canvas = document.createElement("canvas");
     canvas.width = 800;
     canvas.height = 600;
     const context = canvas.getContext("2d");
-    
+
     context.fillStyle = "#DB4437";
     context.fillRect(0, 0, 800, 600);
     context.fillStyle = "white";
     context.font = "48px Arial";
     context.textAlign = "center";
     context.fillText("PPT文档", 400, 300);
-    
+
     const pngDataUrl = canvas.toDataURL("image/png");
     const baseFilename = item.u_zwmc || "PPT文档";
     const cleanName = this.cleanFilename(baseFilename);
     const filename = `${cleanName}_${item.u_cert_name_level || "ppt"}.png`;
-    
+
     this.downloadFile(pngDataUrl, filename);
   }
 
@@ -297,25 +337,25 @@ class BatchPDFToPNGConverter {
    */
   async convertExcelToPNG(blob, item) {
     console.warn("Excel转换功能需要额外的库支持");
-    
+
     // 创建一个占位图片表示Excel文档
     const canvas = document.createElement("canvas");
     canvas.width = 800;
     canvas.height = 600;
     const context = canvas.getContext("2d");
-    
+
     context.fillStyle = "#0F9D58";
     context.fillRect(0, 0, 800, 600);
     context.fillStyle = "white";
     context.font = "48px Arial";
     context.textAlign = "center";
     context.fillText("Excel文档", 400, 300);
-    
+
     const pngDataUrl = canvas.toDataURL("image/png");
     const baseFilename = item.u_zwmc || "Excel文档";
     const cleanName = this.cleanFilename(baseFilename);
     const filename = `${cleanName}_${item.u_cert_name_level || "excel"}.png`;
-    
+
     this.downloadFile(pngDataUrl, filename);
   }
 
@@ -356,10 +396,10 @@ class BatchPDFToPNGConverter {
    */
   async loadPDFJSIfNeeded() {
     // 检查是否有PDF文件需要处理
-    const hasPdfFiles = this.options.dataList.some(item => {
+    const hasPdfFiles = this.options.dataList.some((item) => {
       // 这里简单检查文件扩展名，实际应用中可以根据实际情况调整
       const fileName = item.u_zwmc || "";
-      return fileName.toLowerCase().includes('.pdf');
+      return fileName.toLowerCase().includes(".pdf");
     });
 
     if (hasPdfFiles) {
@@ -452,6 +492,58 @@ class BatchPDFToPNGConverter {
 
     if (typeof $NG !== "undefined" && $NG.message) {
       $NG.message("下载失败: " + message, "error");
+    }
+  }
+
+  /**
+   * 处理ZIP文件
+   */
+  async handleZipFile(blob, item) {
+    console.warn("ZIP文件处理功能需要额外的库支持（如JSZip）");
+
+    // 创建一个占位图片表示ZIP文件
+    const canvas = document.createElement("canvas");
+    canvas.width = 800;
+    canvas.height = 600;
+    const context = canvas.getContext("2d");
+
+    context.fillStyle = "#FFA000";
+    context.fillRect(0, 0, 800, 600);
+    context.fillStyle = "white";
+    context.font = "48px Arial";
+    context.textAlign = "center";
+    context.fillText("ZIP压缩包", 400, 300);
+
+    const pngDataUrl = canvas.toDataURL("image/png");
+    const baseFilename = item.u_zwmc || "压缩文件";
+    const cleanName = this.cleanFilename(baseFilename);
+    const filename = `${cleanName}_${item.u_cert_name_level || "zip"}.png`;
+
+    this.downloadFile(pngDataUrl, filename);
+  }
+
+  /**
+   * 通过文件内容检测是否为PDF
+   */
+  async isPdfByContent(blob) {
+    try {
+      const arrayBuffer = await this.blobToArrayBuffer(blob.slice(0, 1024)); // 只读取前1024字节
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const pdfHeader = "%PDF-";
+
+      // 检查PDF文件头
+      let isPdf = true;
+      for (let i = 0; i < pdfHeader.length; i++) {
+        if (uint8Array[i] !== pdfHeader.charCodeAt(i)) {
+          isPdf = false;
+          break;
+        }
+      }
+
+      return isPdf;
+    } catch (error) {
+      console.error("PDF内容检测失败:", error);
+      return false;
     }
   }
 }
