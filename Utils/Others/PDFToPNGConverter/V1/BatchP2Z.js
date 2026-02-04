@@ -1,6 +1,6 @@
 /**
  * 批量PDF转PNG转换器 - 支持文件夹结构和压缩下载
- * 版本：V2.0
+ * 版本：V2.1
  * 功能：批量处理PDF文件，按明细分文件夹，最后压缩成ZIP下载
  */
 class BatchPDFToPNGConverter {
@@ -35,6 +35,9 @@ class BatchPDFToPNGConverter {
     this.processedImages = 0;
     this.zip = null;
     this.startTime = null;
+    this.isInitializing = false;
+    this.isProcessing = false;
+    this.isCancelled = false;
 
     // 文件处理统计
     this.fileStats = {
@@ -47,9 +50,12 @@ class BatchPDFToPNGConverter {
     // 错误记录
     this.errors = [];
 
-    // 开始处理
+    // 延迟开始处理，确保构造函数完全执行
     if (this.options.dataList && this.options.dataList.length > 0) {
-      this.initializeAndStart();
+      // 使用setTimeout确保构造函数完成后再开始初始化
+      setTimeout(() => {
+        this.initializeAndStart();
+      }, 0);
     }
   }
 
@@ -57,6 +63,13 @@ class BatchPDFToPNGConverter {
    * 初始化和开始处理
    */
   async initializeAndStart() {
+    if (this.isInitializing || this.isProcessing) {
+      console.warn("转换器已经在运行中");
+      return;
+    }
+
+    this.isInitializing = true;
+
     try {
       this.startTime = new Date();
       this.showInitialMessage();
@@ -66,19 +79,33 @@ class BatchPDFToPNGConverter {
         throw new Error("未选择任何单据");
       }
 
-      // 初始化JSZip实例
-      this.zip = new JSZip();
-
-      // 创建一级文件夹（如果JSZip支持的话，实际上在添加文件时会自动创建）
-
       // 显示初始进度
       this.updateProgress(0, `开始处理 ${this.options.dataList.length} 个单据`);
 
       // 加载必要的库
       await this.loadRequiredLibraries();
 
+      // 只有确保JSZip加载完成后才创建实例
+      if (!window.JSZip) {
+        throw new Error("JSZip库未正确加载");
+      }
+
+      // 初始化JSZip实例
+      this.zip = new JSZip();
+      console.log("JSZip实例创建成功");
+
+      // 标记为正在处理
+      this.isProcessing = true;
+      this.isInitializing = false;
+
       // 依次处理每个单据
       for (let i = 0; i < this.options.dataList.length; i++) {
+        // 检查是否已取消
+        if (this.isCancelled) {
+          console.log("处理已被取消");
+          break;
+        }
+
         this.currentIndex = i;
         await this.processSingleDocument(this.options.dataList[i], i);
 
@@ -92,14 +119,22 @@ class BatchPDFToPNGConverter {
         );
       }
 
-      // 生成并下载ZIP文件
-      await this.generateAndDownloadZip();
+      // 检查是否已取消
+      if (!this.isCancelled) {
+        // 生成并下载ZIP文件
+        await this.generateAndDownloadZip();
 
-      // 显示最终结果
-      this.showFinalResult();
+        // 显示最终结果
+        this.showFinalResult();
+      } else {
+        this.updateProgress(0, "处理已被取消");
+      }
     } catch (error) {
       console.error("批量转换失败:", error);
       this.showError(error.message);
+    } finally {
+      this.isProcessing = false;
+      this.isInitializing = false;
     }
   }
 
@@ -123,7 +158,17 @@ class BatchPDFToPNGConverter {
    */
   async loadRequiredLibraries() {
     try {
-      await Promise.all([this.loadPDFJS(), this.loadJSZip()]);
+      // 先检查是否已加载
+      const librariesLoaded = await this.checkLibrariesLoaded();
+
+      if (!librariesLoaded.pdfjs) {
+        await this.loadPDFJS();
+      }
+
+      if (!librariesLoaded.jszip) {
+        await this.loadJSZip();
+      }
+
       console.log("所有必要库已加载完成");
     } catch (error) {
       throw new Error(`库加载失败: ${error.message}`);
@@ -131,25 +176,37 @@ class BatchPDFToPNGConverter {
   }
 
   /**
+   * 检查库是否已加载
+   */
+  async checkLibrariesLoaded() {
+    return {
+      pdfjs: !!(window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions),
+      jszip: !!window.JSZip,
+    };
+  }
+
+  /**
    * 加载PDF.js库
    */
   async loadPDFJS() {
-    if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
-      this.pdfLibLoaded = true;
-      return;
-    }
-
     return new Promise((resolve, reject) => {
-      // 检查是否已加载
+      // 检查是否已在加载中
       if (document.querySelector('script[src*="pdf.min.js"]')) {
-        setTimeout(() => {
-          if (window.pdfjsLib) {
+        // 等待加载完成
+        const checkInterval = setInterval(() => {
+          if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+            clearInterval(checkInterval);
             this.pdfLibLoaded = true;
+            console.log("PDF.js库已加载完成");
             resolve();
-          } else {
-            reject(new Error("PDF.js已加载但未初始化"));
           }
         }, 100);
+
+        // 设置超时
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          reject(new Error("PDF.js加载超时"));
+        }, 10000);
         return;
       }
 
@@ -157,17 +214,23 @@ class BatchPDFToPNGConverter {
       script.src =
         "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
       script.crossOrigin = "anonymous";
+      script.id = "pdfjs-library";
 
       script.onload = () => {
-        if (!window.pdfjsLib || !window.pdfjsLib.GlobalWorkerOptions) {
-          reject(new Error("PDF.js加载后未正确初始化"));
-          return;
-        }
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-        this.pdfLibLoaded = true;
-        console.log("PDF.js库加载成功");
-        resolve();
+        // 延迟一下确保全局变量已设置
+        setTimeout(() => {
+          if (!window.pdfjsLib) {
+            reject(new Error("PDF.js加载后未正确初始化"));
+            return;
+          }
+
+          // 设置worker源
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+          this.pdfLibLoaded = true;
+          console.log("PDF.js库加载成功");
+          resolve();
+        }, 100);
       };
 
       script.onerror = () => {
@@ -182,22 +245,24 @@ class BatchPDFToPNGConverter {
    * 加载JSZip库
    */
   async loadJSZip() {
-    if (window.JSZip) {
-      this.jsZipLoaded = true;
-      return;
-    }
-
     return new Promise((resolve, reject) => {
-      // 检查是否已加载
+      // 检查是否已在加载中
       if (document.querySelector('script[src*="jszip.min.js"]')) {
-        setTimeout(() => {
+        // 等待加载完成
+        const checkInterval = setInterval(() => {
           if (window.JSZip) {
+            clearInterval(checkInterval);
             this.jsZipLoaded = true;
+            console.log("JSZip库已加载完成");
             resolve();
-          } else {
-            reject(new Error("JSZip已加载但未初始化"));
           }
         }, 100);
+
+        // 设置超时
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          reject(new Error("JSZip加载超时"));
+        }, 10000);
         return;
       }
 
@@ -205,11 +270,20 @@ class BatchPDFToPNGConverter {
       script.src =
         "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
       script.crossOrigin = "anonymous";
+      script.id = "jszip-library";
 
       script.onload = () => {
-        this.jsZipLoaded = true;
-        console.log("JSZip库加载成功");
-        resolve();
+        // 延迟一下确保全局变量已设置
+        setTimeout(() => {
+          if (!window.JSZip) {
+            reject(new Error("JSZip加载后未正确初始化"));
+            return;
+          }
+
+          this.jsZipLoaded = true;
+          console.log("JSZip库加载成功");
+          resolve();
+        }, 100);
       };
 
       script.onerror = () => {
@@ -224,6 +298,11 @@ class BatchPDFToPNGConverter {
    * 处理单个单据
    */
   async processSingleDocument(item, index) {
+    // 检查是否已取消
+    if (this.isCancelled) {
+      return;
+    }
+
     const itemName =
       item.u_cert_name_level_EXName || item.u_zwmc || `单据_${index + 1}`;
 
@@ -349,6 +428,11 @@ class BatchPDFToPNGConverter {
    * 转换单个PDF并保存到指定文件夹
    */
   async convertSinglePDF(blob, item, folderName) {
+    // 检查是否已取消
+    if (this.isCancelled) {
+      return;
+    }
+
     // 转换为ArrayBuffer
     const arrayBuffer = await this.blobToArrayBuffer(blob);
 
@@ -368,20 +452,27 @@ class BatchPDFToPNGConverter {
     // 生成基础文件名
     const baseFilename = item.u_zwmc || "资质证书";
     const cleanName = this.cleanFilename(baseFilename);
-    const uniqueId = item.u_cert_name_level || Date.now().toString();
 
     // 转换每一页
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      // 检查是否已取消
+      if (this.isCancelled) {
+        return;
+      }
+
       try {
-        await this.convertPage(pdf, pageNum, cleanName, uniqueId, folderName);
+        await this.convertPage(pdf, pageNum, cleanName, folderName);
         this.fileStats.processedPages++;
 
         // 更新进度
         if (pageNum % 5 === 0 || pageNum === pdf.numPages) {
           const progress =
-            50 + Math.round((this.processedImages / this.totalImages) * 50);
+            50 +
+            Math.round(
+              (this.processedImages / Math.max(this.totalImages, 1)) * 50,
+            );
           this.updateProgress(
-            progress,
+            Math.min(progress, 90),
             `正在转换图片 ${pageNum}/${pdf.numPages}`,
           );
         }
@@ -395,7 +486,7 @@ class BatchPDFToPNGConverter {
   /**
    * 转换单页并添加到ZIP
    */
-  async convertPage(pdf, pageNum, baseName, uniqueId, folderName) {
+  async convertPage(pdf, pageNum, baseName, folderName) {
     try {
       const page = await pdf.getPage(pageNum);
       const viewport = page.getViewport({ scale: this.options.scale });
@@ -432,13 +523,15 @@ class BatchPDFToPNGConverter {
       });
 
       // 生成文件名
-      const filename = `${cleanName}_${pageNum.toString().padStart(3, "0")}.png`;
+      const filename = `${baseName}_${pageNum.toString().padStart(3, "0")}.png`;
 
       // 构建完整的文件路径
       const filePath = `${this.options.parentFolderName}/${folderName}/${filename}`;
 
       // 添加到ZIP
-      this.zip.file(filePath, pngBlob);
+      if (this.zip) {
+        this.zip.file(filePath, pngBlob);
+      }
 
       this.totalImages++;
       this.processedImages++;
@@ -459,6 +552,11 @@ class BatchPDFToPNGConverter {
    */
   async handleZipFile(zipBlob, item, folderName) {
     try {
+      // 检查是否已取消
+      if (this.isCancelled) {
+        return;
+      }
+
       // 解压ZIP文件
       const zip = await JSZip.loadAsync(zipBlob);
 
@@ -476,6 +574,11 @@ class BatchPDFToPNGConverter {
 
       // 处理每个PDF文件
       for (const filename of pdfFiles) {
+        // 检查是否已取消
+        if (this.isCancelled) {
+          return;
+        }
+
         const pdfFile = zip.files[filename];
         const pdfBlob = await pdfFile.async("blob");
 
@@ -612,7 +715,7 @@ class BatchPDFToPNGConverter {
    * 更新进度
    */
   updateProgress(percent, message = "") {
-    const progressText = `进度: ${percent}% - ${this.successCount}成功, ${this.failCount}失败`;
+    const progressText = `进度: ${Math.min(percent, 100)}% - ${this.successCount}成功, ${this.failCount}失败`;
 
     if (this.options.showProgress) {
       console.log(progressText, message);
@@ -679,6 +782,29 @@ class BatchPDFToPNGConverter {
     const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  /**
+   * 取消处理
+   */
+  cancel() {
+    this.isCancelled = true;
+    console.log("转换已取消");
+  }
+
+  /**
+   * 获取状态
+   */
+  getStatus() {
+    return {
+      isInitializing: this.isInitializing,
+      isProcessing: this.isProcessing,
+      isCancelled: this.isCancelled,
+      successCount: this.successCount,
+      failCount: this.failCount,
+      totalImages: this.totalImages,
+      errors: this.errors,
+    };
   }
 }
 
