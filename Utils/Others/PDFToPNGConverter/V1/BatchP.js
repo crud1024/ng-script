@@ -82,12 +82,12 @@ class BatchPDFToPNGConverter {
       const blob = await response.blob();
 
       // 验证是否为PDF
-      // if (
-      //   !blob.type.includes("pdf") &&
-      //   !blob.type.includes("application/pdf")
-      // ) {
-      //   throw new Error("文件不是PDF格式");
-      // }
+      if (
+        !blob.type.includes("pdf") &&
+        !blob.type.includes("application/pdf")
+      ) {
+        throw new Error(`文件不是PDF格式: ${blob.type}`);
+      }
 
       // 转换PDF为PNG
       await this.convertSinglePDF(blob, item);
