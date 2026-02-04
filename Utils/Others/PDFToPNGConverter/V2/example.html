@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>批量文件转PNG转换器示例</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        button {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #3367d6;
+        }
+        .log {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+            font-family: monospace;
+        }
+        .sample-data {
+            background: #e8f0fe;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>批量文件转PNG转换器</h1>
+    
+    <div class="container">
+        <h2>功能说明</h2>
+        <p>此转换器支持以下文件格式：</p>
+        <ul>
+            <li><strong>PDF文件</strong> - 转换每一页为单独的PNG图片</li>
+            <li><strong>图片文件</strong> - JPG、PNG、GIF、BMP等格式转换为PNG</li>
+            <li><strong>Word文档</strong> - DOC、DOCX格式（简化处理）</li>
+            <li><strong>PPT文档</strong> - PPT、PPTX格式（简化处理）</li>
+            <li><strong>Excel文档</strong> - XLS、XLSX格式（简化处理）</li>
+        </ul>
+    </div>
+
+    <div class="container">
+        <h2>使用示例</h2>
+        
+        <div class="sample-data">
+            <h3>示例数据结构：</h3>
+            <pre>
+const sampleData = [
+    {
+        u_cert_name_level: "CERT001",
+        u_zwmc: "产品说明书.pdf",
+        u_zswj: "file_id_001"
+    },
+    {
+        u_cert_name_level: "IMG002", 
+        u_zwmc: "产品照片.jpg",
+        u_zswj: "file_id_002"
+    },
+    {
+        u_cert_name_level: "DOC003",
+        u_zwmc: "技术文档.docx", 
+        u_zswj: "file_id_003"
+    }
+];
+            </pre>
+        </div>
+
+        <button onclick="testPDFConversion()">测试PDF转换</button>
+        <button onclick="testImageConversion()">测试图片转换</button>
+        <button onclick="testMixedConversion()">测试混合格式转换</button>
+        <button onclick="clearLog()">清空日志</button>
+    </div>
+
+    <div class="log" id="logOutput"></div>
+
+    <!-- 引入转换器 -->
+    <script src="./BatchP2P.js"></script>
+    
+    <script>
+        // 日志输出函数
+        function log(message) {
+            const logElement = document.getElementById('logOutput');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.innerHTML += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // 清空日志
+        function clearLog() {
+            document.getElementById('logOutput').innerHTML = '';
+        }
+
+        // 测试PDF转换
+        function testPDFConversion() {
+            log('开始测试PDF转换...');
+            
+            const pdfData = [{
+                u_cert_name_level: "PDF_TEST_001",
+                u_zwmc: "测试文档.pdf",
+                u_zswj: "test_pdf_001"
+            }];
+            
+            try {
+                new BatchPDFToPNGConverter({
+                    dataList: pdfData,
+                    logo: "测试水印",
+                    baseUrl: window.location.origin,
+                    scale: 2.0
+                });
+                log('✅ PDF转换器已启动');
+            } catch (error) {
+                log(`❌ 启动失败: ${error.message}`);
+            }
+        }
+
+        // 测试图片转换
+        function testImageConversion() {
+            log('开始测试图片转换...');
+            
+            const imageData = [{
+                u_cert_name_level: "IMG_TEST_001", 
+                u_zwmc: "测试图片.jpg",
+                u_zswj: "test_img_001"
+            }];
+            
+            try {
+                new BatchPDFToPNGConverter({
+                    dataList: imageData,
+                    logo: "测试水印",
+                    baseUrl: window.location.origin
+                });
+                log('✅ 图片转换器已启动');
+            } catch (error) {
+                log(`❌ 启动失败: ${error.message}`);
+            }
+        }
+
+        // 测试混合格式转换
+        function testMixedConversion() {
+            log('开始测试混合格式转换...');
+            
+            const mixedData = [
+                {
+                    u_cert_name_level: "MIXED_001",
+                    u_zwmc: "PDF文档.pdf",
+                    u_zswj: "mixed_001"
+                },
+                {
+                    u_cert_name_level: "MIXED_002",
+                    u_zwmc: "图片文件.png", 
+                    u_zswj: "mixed_002"
+                },
+                {
+                    u_cert_name_level: "MIXED_003",
+                    u_zwmc: "Word文档.docx",
+                    u_zswj: "mixed_003"
+                }
+            ];
+            
+            try {
+                new BatchPDFToPNGConverter({
+                    dataList: mixedData,
+                    logo: "混合测试水印",
+                    baseUrl: window.location.origin
+                });
+                log('✅ 混合格式转换器已启动');
+            } catch (error) {
+                log(`❌ 启动失败: ${error.message}`);
+            }
+        }
+
+        // 页面加载完成后显示欢迎信息
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🚀 批量文件转PNG转换器已加载');
+            log('💡 点击上方按钮测试不同格式的转换功能');
+            log('📋 支持PDF、图片、Word、PPT、Excel等多种格式');
+        });
+    </script>
+</body>
+</html>
