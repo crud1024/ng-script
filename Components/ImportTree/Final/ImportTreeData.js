@@ -724,8 +724,8 @@ class NewTreeStructureGenerator {
     }
   }
 }
-if (typeof $NG !== "undefined") {
-  $NG.registerComponent("NewTreeStructureGenerator", NewTreeStructureGenerator);
+if (typeof window !== "undefined") {
+  window.NewTreeStructureGenerator = NewTreeStructureGenerator;
 }
 if (typeof module !== "undefined") {
   module.exports = NewTreeStructureGenerator;
