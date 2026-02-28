@@ -5,6 +5,7 @@ class NewTreeStructureGenerator {
       sheetJSUrl:
         "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
       gridId: "inv_budget_d2",
+      gridColumns: options.gridColumns || [], // 接收传入的gridColumns参数
       ...options,
     };
 
@@ -40,16 +41,26 @@ class NewTreeStructureGenerator {
   }
 
   setGridColumns() {
-    if (this.options.gridColumns && Array.isArray(this.options.gridColumns)) {
+    if (
+      this.options.gridColumns &&
+      Array.isArray(this.options.gridColumns) &&
+      this.options.gridColumns.length > 0
+    ) {
       this.gridColumns = this.options.gridColumns;
     } else {
-      this.gridColumns = DEFAULT_GRID_COLUMNS;
+      console.error("未提供有效的gridColumns参数");
+      this.gridColumns = [];
     }
     this.buildFieldMapping();
   }
 
   buildFieldMapping() {
     this.fieldMapping = {};
+
+    if (!this.gridColumns || this.gridColumns.length === 0) {
+      console.warn("gridColumns为空，无法构建字段映射");
+      return;
+    }
 
     const dataColumns = this.gridColumns.slice(1);
 
@@ -724,9 +735,11 @@ class NewTreeStructureGenerator {
     }
   }
 }
+
 if (typeof window !== "undefined") {
   window.NewTreeStructureGenerator = NewTreeStructureGenerator;
 }
+
 if (typeof module !== "undefined") {
   module.exports = NewTreeStructureGenerator;
 }
