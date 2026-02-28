@@ -16,7 +16,7 @@ class NewTreeStructureGenerator {
         "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
       gridId: "inv_budget_d2",
       gridColumns: options.gridColumns || [], // 必须传入
-      dialogTitle: "导入模板数据并生成树形结构",
+      dialogTitle: "导入模板数据(含层级结构)",
       style: {}, // 保留给未来样式覆盖
       ...options,
     };
