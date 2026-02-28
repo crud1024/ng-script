@@ -262,7 +262,7 @@ class NewTreeStructureGenerator {
     const levelFieldContainer = this.createFormGroup("选择层级字段：");
     levelFieldContainer.style.marginBottom = "0";
     levelFieldContainer.style.flex = "1";
-    const levelFieldSelect = this.createSelect(headers, "--请选择层级字段--");
+    const levelFieldSelect = this.createSelect(headers, "请选择层级字段");
     levelFieldContainer.appendChild(levelFieldSelect);
     levelRow.appendChild(levelFieldContainer);
 
@@ -352,7 +352,7 @@ class NewTreeStructureGenerator {
                 text-overflow: ellipsis;
             `;
 
-    const select = this.createSelect(headers, "--请选择Excel字段--");
+    const select = this.createSelect(headers, "请选择字段");
     select.className = "field-mapping-select";
     select.setAttribute("data-field", fieldName);
     select.setAttribute("data-required", isRequired);
