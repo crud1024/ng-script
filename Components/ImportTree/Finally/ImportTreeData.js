@@ -259,14 +259,14 @@ class NewTreeStructureGenerator {
                 margin-bottom: 0;
             `;
 
-    const levelFieldContainer = this.createFormGroup("选择层级字段：");
+    const levelFieldContainer = this.createFormGroup("选择层级字段");
     levelFieldContainer.style.marginBottom = "0";
     levelFieldContainer.style.flex = "1";
     const levelFieldSelect = this.createSelect(headers, "请选择层级字段");
     levelFieldContainer.appendChild(levelFieldSelect);
     levelRow.appendChild(levelFieldContainer);
 
-    const separatorContainer = this.createFormGroup("输入层级分隔符：");
+    const separatorContainer = this.createFormGroup("输入层级分隔符");
     separatorContainer.style.marginBottom = "0";
     separatorContainer.style.flex = "1";
     const separatorInput = this.createInput(".", "例如: .");
