@@ -8,6 +8,7 @@ class NewTreeStructureGenerator {
    * @param {Array} options.gridColumns 网格列定义，用于构建字段映射
    * @param {string} options.dialogTitle 导入对话框标题，默认 '导入模板数据并生成树形结构'
    * @param {boolean} options.defaultTreeMode 默认是否启用树结构模式，默认 true
+   * @param {string} options.matchRule 字段匹配规则，默认 'fuzzy'，可选：'prefix', 'suffix', 'fuzzy', 'chinese', 'exact'
    * @param {Object} options.style 自定义样式覆盖
    */
   constructor(options = {}) {
@@ -18,7 +19,8 @@ class NewTreeStructureGenerator {
       gridId: "inv_budget_d2",
       gridColumns: options.gridColumns || [], // 必须传入
       dialogTitle: "导入模板数据(含层级结构)",
-      defaultTreeMode: true, // 默认启用树结构模式
+      defaultTreeMode: true, // 默认是否启用树结构模式
+      matchRule: "fuzzy", // 默认使用模糊匹配
       style: {}, // 保留给未来样式覆盖
       ...options,
     };
@@ -27,6 +29,7 @@ class NewTreeStructureGenerator {
     this.gridColumns = [];
     this.isInitialized = false;
     this.treeModeEnabled = this.options.defaultTreeMode; // 树模式开关状态
+    this.activeTooltip = null; // 当前激活的提示框
 
     this.init();
   }
@@ -145,6 +148,145 @@ class NewTreeStructureGenerator {
     );
   }
 
+  /**
+   * 字段匹配方法
+   * @param {string} fieldName 字段名（如 s_name, s_code 等）
+   * @param {Array} headers Excel表头数组
+   * @param {string} rule 匹配规则
+   * @returns {string|null} 匹配到的表头，未匹配返回null
+   */
+  matchFieldWithRule(fieldName, headers, rule) {
+    if (!fieldName || !headers || headers.length === 0) return null;
+
+    // 移除前缀s_（如果存在）
+    const cleanFieldName = fieldName.replace(/^s_/, "");
+
+    // 转换为小写用于不区分大小写匹配
+    const lowerFieldName = cleanFieldName.toLowerCase();
+    const lowerHeaders = headers.map((h) => (h ? String(h).toLowerCase() : ""));
+
+    switch (rule) {
+      case "exact": // 完全匹配
+        for (let i = 0; i < headers.length; i++) {
+          if (
+            headers[i] &&
+            String(headers[i]).toLowerCase() === lowerFieldName
+          ) {
+            return headers[i];
+          }
+        }
+        break;
+
+      case "prefix": // 前缀匹配
+        for (let i = 0; i < headers.length; i++) {
+          if (lowerHeaders[i] && lowerHeaders[i].startsWith(lowerFieldName)) {
+            return headers[i];
+          }
+        }
+        break;
+
+      case "suffix": // 后缀匹配
+        for (let i = 0; i < headers.length; i++) {
+          if (lowerHeaders[i] && lowerHeaders[i].endsWith(lowerFieldName)) {
+            return headers[i];
+          }
+        }
+        break;
+
+      case "chinese": // 仅保留汉字匹配
+        const chineseOnly = this.extractChinese(cleanFieldName).toLowerCase();
+        if (chineseOnly) {
+          for (let i = 0; i < headers.length; i++) {
+            if (headers[i]) {
+              const headerChinese = this.extractChinese(
+                headers[i],
+              ).toLowerCase();
+              if (headerChinese && headerChinese.includes(chineseOnly)) {
+                return headers[i];
+              }
+            }
+          }
+        }
+        break;
+
+      case "fuzzy": // 模糊匹配（默认）
+      default:
+        // 尝试多种匹配方式
+        let bestMatch = null;
+        let bestScore = 0;
+
+        for (let i = 0; i < headers.length; i++) {
+          if (!headers[i]) continue;
+
+          const header = String(headers[i]);
+          const lowerHeader = header.toLowerCase();
+          let score = 0;
+
+          // 完全匹配
+          if (lowerHeader === lowerFieldName) {
+            score = 100;
+          }
+          // 包含匹配
+          else if (lowerHeader.includes(lowerFieldName)) {
+            score = 80;
+          }
+          // 单词匹配（处理下划线分隔的字段）
+          else {
+            const fieldParts = lowerFieldName.split("_");
+            const headerParts = lowerHeader.split(/[_-\s]+/);
+
+            // 计算匹配的单词数
+            let matchedParts = 0;
+            fieldParts.forEach((part) => {
+              if (
+                headerParts.some((hp) => hp.includes(part) || part.includes(hp))
+              ) {
+                matchedParts++;
+              }
+            });
+
+            if (matchedParts > 0) {
+              score = Math.round((matchedParts / fieldParts.length) * 60);
+            }
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = header;
+          }
+        }
+
+        return bestScore >= 60 ? bestMatch : null;
+    }
+
+    return null;
+  }
+
+  /**
+   * 提取字符串中的汉字
+   */
+  extractChinese(str) {
+    if (!str) return "";
+    return String(str).replace(/[^\u4e00-\u9fa5]/g, "");
+  }
+
+  /**
+   * 自动匹配所有字段
+   */
+  autoMatchFields(mappableFields, headers) {
+    const matches = {};
+    const rule = this.options.matchRule;
+
+    Object.keys(mappableFields).forEach((fieldName) => {
+      const matchedHeader = this.matchFieldWithRule(fieldName, headers, rule);
+      if (matchedHeader) {
+        matches[fieldName] = matchedHeader;
+      }
+    });
+
+    return matches;
+  }
+
   loadSheetJS(callback) {
     if (typeof XLSX !== "undefined") {
       callback();
@@ -233,10 +375,152 @@ class NewTreeStructureGenerator {
     }, 1000);
   }
 
+  /**
+   * 创建全局提示框
+   */
+  createGlobalTooltip(text, targetElement) {
+    // 移除已有的提示框
+    if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
+      document.body.removeChild(this.activeTooltip);
+    }
+
+    const tooltip = document.createElement("div");
+    tooltip.style.cssText = `
+      position: fixed;
+      background: rgba(0, 0, 0, 0.85);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(2px);
+      white-space: nowrap;
+      letter-spacing: 0.3px;
+      z-index: 10000;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    `;
+
+    tooltip.textContent = text;
+
+    // 添加小箭头
+    const arrow = document.createElement("div");
+    arrow.style.cssText = `
+      position: absolute;
+      bottom: -4px;
+      left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+      width: 8px;
+      height: 8px;
+      background: rgba(0, 0, 0, 0.85);
+      border-right: 1px solid rgba(255,255,255,0.1);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    `;
+    tooltip.appendChild(arrow);
+
+    // 计算位置
+    const rect = targetElement.getBoundingClientRect();
+    const tooltipRect = { width: 200, height: 60 }; // 预估尺寸
+
+    tooltip.style.left = `${rect.left + rect.width / 2 - tooltipRect.width / 2}px`;
+    tooltip.style.top = `${rect.top - tooltipRect.height - 10}px`;
+
+    document.body.appendChild(tooltip);
+    this.activeTooltip = tooltip;
+
+    return tooltip;
+  }
+
   // ================== 美化界面：可折叠面板 + 水平滚动 ==================
   showImportDialog(headers, data) {
     const overlay = this.createOverlay();
     const dialog = this.createDialog(this.options.dialogTitle);
+
+    // 添加匹配规则选择器
+    const rulePanel = this.createCollapsiblePanel("匹配规则配置", true);
+    const ruleRow = document.createElement("div");
+    ruleRow.style.cssText = `
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+    `;
+
+    const ruleContainer = document.createElement("div");
+    ruleContainer.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #f5f5f5;
+      padding: 8px 16px;
+      border-radius: 30px;
+      border: 1px solid #e8e8e8;
+    `;
+
+    const ruleLabel = document.createElement("span");
+    ruleLabel.textContent = "匹配规则:";
+    ruleLabel.style.cssText = `
+      font-size: 14px;
+      color: #666;
+      font-weight: 500;
+    `;
+
+    const ruleSelect = document.createElement("select");
+    ruleSelect.style.cssText = `
+      padding: 6px 12px;
+      border: 1px solid #d9d9d9;
+      border-radius: 20px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+      outline: none;
+    `;
+
+    const rules = [
+      { value: "fuzzy", label: "模糊匹配" },
+      { value: "exact", label: "完全匹配" },
+      { value: "prefix", label: "前缀匹配" },
+      { value: "suffix", label: "后缀匹配" },
+      { value: "chinese", label: "汉字匹配" },
+    ];
+
+    rules.forEach((rule) => {
+      const option = document.createElement("option");
+      option.value = rule.value;
+      option.textContent = rule.label;
+      if (rule.value === this.options.matchRule) {
+        option.selected = true;
+      }
+      ruleSelect.appendChild(option);
+    });
+
+    const autoMatchBtn = this.createButton("自动匹配", "secondary", () => {
+      const mappableFields = this.getMappableFields();
+      const matches = this.autoMatchFields(mappableFields, headers);
+
+      // 更新选择框的值
+      Object.keys(matches).forEach((fieldName) => {
+        const select = dialog.querySelector(
+          `.field-mapping-select[data-field="${fieldName}"]`,
+        );
+        if (select) {
+          select.value = matches[fieldName];
+        }
+      });
+
+      this.showAlert(
+        `自动匹配完成，已匹配 ${Object.keys(matches).length} 个字段`,
+      );
+    });
+
+    ruleContainer.appendChild(ruleLabel);
+    ruleContainer.appendChild(ruleSelect);
+    ruleContainer.appendChild(autoMatchBtn);
+    ruleRow.appendChild(ruleContainer);
+    rulePanel.content.appendChild(ruleRow);
+    dialog.appendChild(rulePanel);
 
     // ---------- 字段映射配置（可折叠，水平滚动）----------
     const mappingPanel = this.createCollapsiblePanel("字段映射配置", true);
@@ -262,6 +546,9 @@ class NewTreeStructureGenerator {
 
     const mappableFields = this.getMappableFields();
 
+    // 预先计算自动匹配结果
+    const autoMatches = this.autoMatchFields(mappableFields, headers);
+
     Object.keys(mappableFields).forEach((fieldName) => {
       const fieldConfig = mappableFields[fieldName];
       const fieldContainer = this.createFieldMapping(
@@ -269,8 +556,9 @@ class NewTreeStructureGenerator {
         headers,
         fieldName,
         fieldConfig.required,
+        autoMatches[fieldName], // 传入自动匹配的值
       );
-      // 每个字段项宽度调整为130px，比之前缩短一半
+      // 每个字段项宽度调整为130px
       fieldContainer.style.flex = "0 0 auto";
       fieldContainer.style.width = "130px";
       fieldContainer.style.marginBottom = "0";
@@ -281,80 +569,109 @@ class NewTreeStructureGenerator {
     mappingPanel.content.appendChild(mappingScrollContainer);
     dialog.appendChild(mappingPanel);
 
+    // 更新匹配规则的事件
+    ruleSelect.addEventListener("change", () => {
+      this.options.matchRule = ruleSelect.value;
+    });
+
     // ---------- 层级配置（可折叠）----------
     const levelPanel = this.createCollapsiblePanel("层级配置", true);
     const levelRow = document.createElement("div");
     levelRow.style.cssText = `
       display: flex;
       gap: 20px;
-      align-items: flex-start;
+      align-items: center;
       flex-wrap: wrap;
     `;
 
-    // 1. 开关组件 - 树结构开关
-    const switchContainer = this.createFormGroup("树结构模式");
-    switchContainer.style.marginBottom = "0";
-    switchContainer.style.flex = "0 0 auto";
-    switchContainer.style.minWidth = "120px";
-
+    // 1. 仿Ant Design风格开关组件
     const switchWrapper = document.createElement("div");
     switchWrapper.style.cssText = `
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-top: 8px;
+      gap: 12px;
+      background: #f5f5f5;
+      padding: 6px 12px;
+      border-radius: 30px;
+      border: 1px solid #e8e8e8;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     `;
 
-    const switchInput = document.createElement("input");
-    switchInput.type = "checkbox";
-    switchInput.checked = this.treeModeEnabled;
-    switchInput.style.cssText = `
-      width: 18px;
-      height: 18px;
-      cursor: pointer;
-      accent-color: #1890ff;
-    `;
+    // 创建仿Ant Design开关
+    const antSwitch = this.createAntSwitch(this.treeModeEnabled);
 
     const switchLabel = document.createElement("span");
-    switchLabel.textContent = this.treeModeEnabled ? "启用" : "禁用";
+    switchLabel.textContent = this.treeModeEnabled ? "层级模式" : "平级模式";
     switchLabel.style.cssText = `
       font-size: 14px;
       color: #333;
       user-select: none;
+      font-weight: 500;
+      min-width: 70px;
+      transition: color 0.2s;
     `;
 
-    switchWrapper.appendChild(switchInput);
+    // 根据defaultTreeMode决定开关是否可点击
+    if (!this.options.defaultTreeMode) {
+      antSwitch.style.cursor = "not-allowed";
+      antSwitch.style.opacity = "0.6";
+      switchWrapper.style.opacity = "0.8";
+    }
+
+    switchWrapper.appendChild(antSwitch);
     switchWrapper.appendChild(switchLabel);
-    switchContainer.appendChild(switchWrapper);
-    levelRow.appendChild(switchContainer);
+    levelRow.appendChild(switchWrapper);
 
     // 2. 选择层级字段容器
-    const levelFieldContainer = this.createFormGroup("选择层级字段");
-    levelFieldContainer.style.marginBottom = "0";
-    levelFieldContainer.style.flex = "1 1 250px";
-    levelFieldContainer.style.minWidth = "200px";
+    const levelFieldContainer = document.createElement("div");
+    levelFieldContainer.style.cssText = `
+      flex: 1 1 250px;
+      min-width: 200px;
+    `;
 
     const levelFieldSelect = this.createSelect(headers, "请选择层级字段");
     levelFieldSelect.style.width = "100%";
-    levelFieldSelect.style.padding = "10px 12px";
+    levelFieldSelect.style.padding = "8px 12px";
+    levelFieldSelect.style.height = "38px";
     levelFieldSelect.style.fontSize = "14px";
-    levelFieldSelect.style.borderRadius = "8px";
-    levelFieldSelect.disabled = !this.treeModeEnabled; // 根据开关状态设置禁用
+    levelFieldSelect.style.borderRadius = "6px";
+    levelFieldSelect.disabled = !this.treeModeEnabled;
     levelFieldContainer.appendChild(levelFieldSelect);
     levelRow.appendChild(levelFieldContainer);
 
     // 3. 分隔符输入容器
-    const separatorContainer = this.createFormGroup("输入层级分隔符");
-    separatorContainer.style.marginBottom = "0";
-    separatorContainer.style.flex = "1 1 200px";
-    separatorContainer.style.minWidth = "150px";
+    const separatorContainer = document.createElement("div");
+    separatorContainer.style.cssText = `
+      flex: 1 1 200px;
+      min-width: 150px;
+    `;
 
     const separatorInput = this.createInput(".", "例如: .");
     separatorInput.style.width = "100%";
-    separatorInput.style.padding = "10px 12px";
+    separatorInput.style.padding = "8px 12px";
+    separatorInput.style.height = "38px";
     separatorInput.style.fontSize = "14px";
-    separatorInput.style.borderRadius = "8px";
-    separatorInput.disabled = !this.treeModeEnabled; // 根据开关状态设置禁用
+    separatorInput.style.borderRadius = "6px";
+    separatorInput.style.boxSizing = "border-box";
+    separatorInput.disabled = !this.treeModeEnabled;
+
+    // 鼠标悬停显示全局提示
+    separatorInput.addEventListener("mouseenter", () => {
+      if (!separatorInput.disabled) {
+        this.createGlobalTooltip(
+          "层级分隔符，用于分割不同层级的标识，如：. 或 - 或 /",
+          separatorInput,
+        );
+      }
+    });
+
+    separatorInput.addEventListener("mouseleave", () => {
+      if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
+        document.body.removeChild(this.activeTooltip);
+        this.activeTooltip = null;
+      }
+    });
+
     separatorContainer.appendChild(separatorInput);
     levelRow.appendChild(separatorContainer);
 
@@ -362,32 +679,82 @@ class NewTreeStructureGenerator {
     dialog.appendChild(levelPanel);
 
     // 开关切换事件
-    switchInput.addEventListener("change", (e) => {
-      const enabled = e.target.checked;
+    const toggleSwitch = (enabled) => {
       this.treeModeEnabled = enabled;
-      switchLabel.textContent = enabled ? "启用" : "禁用";
+
+      // 更新开关样式
+      if (enabled) {
+        antSwitch.style.backgroundColor = "#1890ff";
+        antSwitch.querySelector(".new-tree-switch-handle").style.transform =
+          "translateX(22px)";
+        switchLabel.textContent = "层级模式";
+        switchLabel.style.color = "#333";
+      } else {
+        antSwitch.style.backgroundColor = "rgba(0, 0, 0, 0.25)";
+        antSwitch.querySelector(".new-tree-switch-handle").style.transform =
+          "translateX(2px)";
+        switchLabel.textContent = "平级模式";
+        switchLabel.style.color = "#333";
+      }
 
       // 控制层级字段和分隔符的禁用状态
       levelFieldSelect.disabled = !enabled;
       separatorInput.disabled = !enabled;
 
-      // 视觉反馈 - 禁用时降低透明度
+      // 视觉反馈
       [levelFieldSelect, separatorInput].forEach((el) => {
-        el.style.opacity = enabled ? "1" : "0.6";
+        el.style.opacity = enabled ? "1" : "0.5";
         el.style.backgroundColor = enabled ? "white" : "#f5f5f5";
+        el.style.cursor = enabled ? "pointer" : "not-allowed";
       });
+
+      // 移除可能存在的提示框
+      if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
+        document.body.removeChild(this.activeTooltip);
+        this.activeTooltip = null;
+      }
+    };
+
+    // 点击开关切换
+    antSwitch.addEventListener("click", (e) => {
+      if (!this.options.defaultTreeMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showAlert(
+          "当前配置已锁定为平级模式，如需启用层级模式请修改初始化参数",
+        );
+        return;
+      }
+      e.stopPropagation();
+      e.preventDefault();
+      toggleSwitch(!this.treeModeEnabled);
     });
 
     // 初始化视觉状态
-    [levelFieldSelect, separatorInput].forEach((el) => {
-      el.style.opacity = this.treeModeEnabled ? "1" : "0.6";
-      el.style.backgroundColor = this.treeModeEnabled ? "white" : "#f5f5f5";
-    });
+    toggleSwitch(this.treeModeEnabled);
+
+    // 如果defaultTreeMode为false，添加禁用提示
+    if (!this.options.defaultTreeMode) {
+      const disabledTip = document.createElement("div");
+      disabledTip.style.cssText = `
+        font-size: 12px;
+        color: #999;
+        margin-left: 10px;
+        font-style: italic;
+      `;
+      disabledTip.textContent = "(已锁定为平级模式)";
+      switchWrapper.appendChild(disabledTip);
+    }
 
     // ---------- 按钮区域 ----------
     const buttonContainer = this.createButtonContainer();
 
     const cancelBtn = this.createButton("取消", "secondary", () => {
+      // 移除可能存在的提示框
+      if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
+        document.body.removeChild(this.activeTooltip);
+        this.activeTooltip = null;
+      }
       document.body.removeChild(overlay);
     });
 
@@ -428,17 +795,33 @@ class NewTreeStructureGenerator {
             levelField,
             separator,
           );
-          this.importToGrid(treeData, true); // 树结构模式
+          this.importToGrid(treeData, true);
+          // 移除可能存在的提示框
+          if (
+            this.activeTooltip &&
+            document.body.contains(this.activeTooltip)
+          ) {
+            document.body.removeChild(this.activeTooltip);
+            this.activeTooltip = null;
+          }
           document.body.removeChild(overlay);
         } catch (error) {
           console.error("生成树形结构失败:", error);
           this.showAlert("生成失败: " + error.message);
         }
       } else {
-        // 平级结构模式 - 直接导入平级数据
+        // 平级结构模式
         try {
           const flatData = this.generateFlatData(data, fieldMappings);
-          this.importToGrid(flatData, false); // 平级结构模式
+          this.importToGrid(flatData, false);
+          // 移除可能存在的提示框
+          if (
+            this.activeTooltip &&
+            document.body.contains(this.activeTooltip)
+          ) {
+            document.body.removeChild(this.activeTooltip);
+            this.activeTooltip = null;
+          }
           document.body.removeChild(overlay);
         } catch (error) {
           console.error("导入平级数据失败:", error);
@@ -455,6 +838,136 @@ class NewTreeStructureGenerator {
     document.body.appendChild(overlay);
 
     this.setupOverlayClose(overlay);
+  }
+
+  /**
+   * 创建仿Ant Design风格的开关组件
+   */
+  createAntSwitch(checked = false) {
+    const switchContainer = document.createElement("div");
+    switchContainer.className = `new-tree-switch ${checked ? "new-tree-switch-checked" : ""}`;
+    switchContainer.style.cssText = `
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 22px;
+      line-height: 22px;
+      border-radius: 22px;
+      background-color: ${checked ? "#1890ff" : "rgba(0, 0, 0, 0.25)"};
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    `;
+
+    const switchHandle = document.createElement("div");
+    switchHandle.className = "new-tree-switch-handle";
+    switchHandle.style.cssText = `
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 18px;
+      background-color: white;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      transform: ${checked ? "translateX(22px)" : "translateX(2px)"};
+    `;
+
+    switchContainer.appendChild(switchHandle);
+
+    // 添加鼠标悬停效果
+    switchContainer.addEventListener("mouseenter", () => {
+      if (!checked) {
+        switchContainer.style.backgroundColor = "rgba(0, 0, 0, 0.35)";
+      } else {
+        switchContainer.style.backgroundColor = "#40a9ff";
+      }
+    });
+
+    switchContainer.addEventListener("mouseleave", () => {
+      if (!checked) {
+        switchContainer.style.backgroundColor = "rgba(0, 0, 0, 0.25)";
+      } else {
+        switchContainer.style.backgroundColor = "#1890ff";
+      }
+    });
+
+    return switchContainer;
+  }
+
+  createFieldMapping(
+    labelText,
+    headers,
+    fieldName,
+    isRequired = false,
+    autoMatchValue = null,
+  ) {
+    const container = document.createElement("div");
+    container.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      background: #f9f9f9;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #f0f0f0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+    `;
+
+    const label = document.createElement("label");
+    label.textContent = isRequired ? `${labelText} *` : labelText;
+    label.style.cssText = `
+      margin-bottom: 6px;
+      color: ${isRequired ? "#cf1322" : "#333"};
+      font-weight: ${isRequired ? "600" : "500"};
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    `;
+
+    const select = this.createSelect(headers, "请选择", autoMatchValue);
+    select.className = "field-mapping-select";
+    select.setAttribute("data-field", fieldName);
+    select.setAttribute("data-required", isRequired);
+    select.style.width = "100%";
+    select.style.padding = "6px 8px";
+    select.style.fontSize = "12px";
+    select.style.borderRadius = "4px";
+    select.style.height = "30px";
+
+    // 如果有自动匹配的值，标记一下
+    if (autoMatchValue) {
+      select.style.borderColor = "#52c41a";
+      select.style.backgroundColor = "#f6ffed";
+
+      // 添加匹配标记
+      const matchBadge = document.createElement("span");
+      matchBadge.textContent = "✓";
+      matchBadge.style.cssText = `
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        background: #52c41a;
+        color: white;
+        font-size: 10px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+      `;
+      container.style.position = "relative";
+      container.appendChild(matchBadge);
+    }
+
+    container.appendChild(label);
+    container.appendChild(select);
+
+    return container;
   }
 
   /**
@@ -592,45 +1105,6 @@ class NewTreeStructureGenerator {
     return panel;
   }
 
-  createFieldMapping(labelText, headers, fieldName, isRequired = false) {
-    const container = document.createElement("div");
-    container.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      background: #f9f9f9;
-      padding: 8px;
-      border-radius: 6px;
-      border: 1px solid #f0f0f0;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.02);
-    `;
-
-    const label = document.createElement("label");
-    label.textContent = isRequired ? `${labelText} *` : labelText;
-    label.style.cssText = `
-      margin-bottom: 6px;
-      color: ${isRequired ? "#cf1322" : "#333"};
-      font-weight: ${isRequired ? "600" : "500"};
-      font-size: 12px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    `;
-
-    const select = this.createSelect(headers, "请选择");
-    select.className = "field-mapping-select";
-    select.setAttribute("data-field", fieldName);
-    select.setAttribute("data-required", isRequired);
-    select.style.width = "100%";
-    select.style.padding = "6px 8px";
-    select.style.fontSize = "12px";
-    select.style.borderRadius = "4px";
-
-    container.appendChild(label);
-    container.appendChild(select);
-
-    return container;
-  }
-
   // ================== 原有辅助方法（微调样式） ==================
 
   createOverlay() {
@@ -643,7 +1117,7 @@ class NewTreeStructureGenerator {
       height: 100%;
       background: rgba(0,0,0,0.5);
       backdrop-filter: blur(3px);
-      z-index: 9999;
+      z-index: 888;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -658,8 +1132,8 @@ class NewTreeStructureGenerator {
       padding: 28px;
       border-radius: 16px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.15);
-      z-index: 10000;
-      width: 800px;
+      z-index: 889;
+      width: 850px;
       max-width: 95vw;
       max-height: 85vh;
       overflow-y: auto;
@@ -681,25 +1155,7 @@ class NewTreeStructureGenerator {
     return dialog;
   }
 
-  createFormGroup(labelText) {
-    const container = document.createElement("div");
-    container.style.marginBottom = "20px";
-
-    const label = document.createElement("label");
-    label.textContent = labelText;
-    label.style.cssText = `
-      display: block;
-      margin-bottom: 8px;
-      color: #333;
-      font-weight: 600;
-      font-size: 14px;
-    `;
-
-    container.appendChild(label);
-    return container;
-  }
-
-  createSelect(headers, placeholder) {
+  createSelect(headers, placeholder, selectedValue = null) {
     const select = document.createElement("select");
     select.style.cssText = `
       padding: 8px 12px;
@@ -714,6 +1170,8 @@ class NewTreeStructureGenerator {
       background-position: right 10px center;
       background-size: 14px;
       cursor: pointer;
+      height: 38px;
+      box-sizing: border-box;
     `;
 
     select.addEventListener("focus", () => {
@@ -731,7 +1189,7 @@ class NewTreeStructureGenerator {
     const emptyOption = document.createElement("option");
     emptyOption.value = "";
     emptyOption.textContent = placeholder;
-    emptyOption.selected = true;
+    emptyOption.selected = !selectedValue;
     select.appendChild(emptyOption);
 
     headers.forEach((header) => {
@@ -739,6 +1197,9 @@ class NewTreeStructureGenerator {
         const option = document.createElement("option");
         option.value = header;
         option.textContent = header;
+        if (selectedValue && header === selectedValue) {
+          option.selected = true;
+        }
         select.appendChild(option);
       }
     });
@@ -759,6 +1220,7 @@ class NewTreeStructureGenerator {
       border-radius: 6px;
       font-size: 14px;
       transition: all 0.2s;
+      height: 38px;
     `;
 
     input.addEventListener("focus", () => {
@@ -801,6 +1263,8 @@ class NewTreeStructureGenerator {
       transition: all 0.2s;
       border: none;
       font-weight: 500;
+      height: 38px;
+      min-width: 80px;
     `;
 
     if (type === "primary") {
@@ -846,6 +1310,11 @@ class NewTreeStructureGenerator {
   setupOverlayClose(overlay) {
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) {
+        // 移除可能存在的提示框
+        if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
+          document.body.removeChild(this.activeTooltip);
+          this.activeTooltip = null;
+        }
         document.body.removeChild(overlay);
       }
     });
@@ -1001,7 +1470,9 @@ class NewTreeStructureGenerator {
       dgrid
         .addRows(importData)
         .then(() => {
-          this.showAlert(`导入成功！${isTreeMode ? "(树结构)" : "(平级结构)"}`);
+          this.showAlert(
+            `导入成功！${isTreeMode ? "(层级模式)" : "(平级模式)"}`,
+          );
         })
         .catch((error) => {
           console.error("导入失败:", error);
@@ -1014,10 +1485,83 @@ class NewTreeStructureGenerator {
   }
 
   showAlert(message) {
+    // 创建自定义弹窗，确保显示在最上层
     if (typeof $NG !== "undefined" && $NG.alert) {
       $NG.alert(message);
     } else {
-      alert(message);
+      // 创建自定义弹窗
+      const alertOverlay = document.createElement("div");
+      alertOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.3);
+        z-index: 1000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      `;
+
+      const alertBox = document.createElement("div");
+      alertBox.style.cssText = `
+        background: white;
+        padding: 20px 30px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        max-width: 400px;
+        text-align: center;
+        z-index: 1001;
+        border: 1px solid #e6f7ff;
+      `;
+
+      const messageEl = document.createElement("p");
+      messageEl.textContent = message;
+      messageEl.style.cssText = `
+        margin: 0 0 20px 0;
+        color: #333;
+        font-size: 14px;
+        line-height: 1.5;
+      `;
+
+      const okButton = document.createElement("button");
+      okButton.textContent = "确定";
+      okButton.style.cssText = `
+        padding: 6px 20px;
+        background: #1890ff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+      `;
+
+      okButton.addEventListener("mouseover", () => {
+        okButton.style.background = "#40a9ff";
+      });
+
+      okButton.addEventListener("mouseout", () => {
+        okButton.style.background = "#1890ff";
+      });
+
+      okButton.addEventListener("click", () => {
+        document.body.removeChild(alertOverlay);
+      });
+
+      alertBox.appendChild(messageEl);
+      alertBox.appendChild(okButton);
+      alertOverlay.appendChild(alertBox);
+
+      // 点击遮罩层关闭
+      alertOverlay.addEventListener("click", (e) => {
+        if (e.target === alertOverlay) {
+          document.body.removeChild(alertOverlay);
+        }
+      });
+
+      document.body.appendChild(alertOverlay);
     }
   }
 }
