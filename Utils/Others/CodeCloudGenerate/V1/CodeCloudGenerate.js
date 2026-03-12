@@ -1,7 +1,8 @@
 /**
  * 数据变更比较器类 - 用于比较和可视化数据变更结果
  * 使用wordcloud2.js开源库渲染彩色词云
- * 成功 -> #85caef，失败 -> #c6f3ff
+ * 成功 -> 优雅蓝绿色 (#85caef)，失败 -> 柔和珊瑚粉 (#FFA07A)
+ * 加入UI设计师审美的视觉效果
  */
 
 class DataChangeComparator {
@@ -21,29 +22,34 @@ class DataChangeComparator {
       throw new Error(`容器不存在: ${container}`);
     }
 
-    // 默认配置
+    // UI设计师推荐的优雅配色
     this.config = {
-      // 颜色配置 - 更新为新颜色
+      // 颜色配置 - 美观的配色方案
       colors: {
-        success: "#85caef", // 成功颜色
-        error: "#c6f3ff", // 失败颜色
+        success: "#85caef", // 优雅蓝绿色
+        error: "#FFA07A", // 柔和珊瑚粉
+        successLight: "#7FFFD4", // 浅绿色（用于渐变）
+        errorLight: "#FFB6C1", // 浅粉色（用于渐变）
       },
-      // 权重配置
+      // 权重配置 - 调整权重使视觉效果更好
       weights: {
-        success: 20,
-        error: 15,
+        success: 22,
+        error: 18,
       },
-      // 词云配置
+      // 词云配置 - 优化视觉效果
       wordcloud: {
-        gridSize: 12,
-        rotateRatio: 0.3,
-        shape: "circle",
-        ellipticity: 0.7,
-        fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
-        backgroundColor: "#f9f9f9",
-        borderColor: "#ccc",
-        minFontSize: 12,
-        maxFontSize: 60,
+        gridSize: 16, // 增大网格间距，避免过于拥挤
+        rotateRatio: 0.2, // 减少旋转比例，让文字更易读
+        shape: "circle", // 圆形布局
+        ellipticity: 0.7, // 椭圆度
+        fontFamily:
+          '"Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif',
+        backgroundColor: "#F8F9FA", // 极浅灰背景
+        borderColor: "#E9ECEF", // 浅灰边框
+        minFontSize: 14,
+        maxFontSize: 72,
+        fontWeight: 500, // 中等字重
+        textShadow: "0 2px 4px rgba(0,0,0,0.1)", // 文字阴影
       },
       // CDN配置
       cdn: {
@@ -52,10 +58,10 @@ class DataChangeComparator {
         backup:
           "https://cdn.jsdelivr.net/npm/wordcloud@1.2.0/src/wordcloud2.min.js",
       },
-      // 其他配置 - 关闭图例显示
-      showLegend: false,
+      // 其他配置
       showStats: true,
       autoLoadLibrary: true,
+      enableAnimation: true, // 启用动画效果
       onRenderStart: null,
       onRenderComplete: null,
       onRenderError: null,
@@ -69,6 +75,7 @@ class DataChangeComparator {
     this._currentResponse = null;
     this._words = null;
     this._instanceId = Date.now() + Math.random().toString(36).substr(2, 9);
+    this._animationFrame = null;
 
     // 如果配置了自动加载库，则开始加载
     if (this.config.autoLoadLibrary) {
@@ -121,8 +128,7 @@ class DataChangeComparator {
           this._loadingCallbacks = [];
 
           if (this.container) {
-            this.container.innerHTML =
-              '<div style="color:red; padding:20px;">错误：词云库加载失败，请刷新重试</div>';
+            this._showError("词云库加载失败，请刷新重试");
           }
         }
       };
@@ -131,6 +137,123 @@ class DataChangeComparator {
     };
 
     loadScript(this.config.cdn.primary);
+  }
+
+  /**
+   * 显示错误信息（美化版）
+   * @private
+   */
+  _showError(message) {
+    console.log(message);
+    this.container.innerHTML = `
+<div style="
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  padding: 40px 20px;
+  text-align: center;
+  color: #666;
+  background: #f9f9f9;
+  border-radius: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+">
+  <svg style="width: 60px; height: 60px; margin-bottom: 20px; color: #bbb;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2v4m0 12v4m-8-8H2m20 0h-2m-2-6.24A7.12 7.12 0 0 0 19 8a7 7 0 0 0-14 0c0 1.76.65 3.36 1.71 4.6"></path>
+    <path d="M7.21 15.26A6.972 6.972 0 0 0 12 20a6.972 6.972 0 0 0 4.79-4.74"></path>
+  </svg>
+  <h3 style="margin: 0 0 8px 0; font-weight: 500; color: #444;">组织迁移中</h3>
+  <p style="margin: 0; font-size: 14px; line-height: 1.5; max-width: 300px;">
+    正在处理迁移信息
+  </p>
+  <div style="margin-top: 20px; width: 120px; height: 4px; background: #eaeaea; border-radius: 2px; overflow: hidden;">
+    <div style="width: 40%; height: 100%; background: #4dabf7; border-radius: 2px; animation: loading 2s ease-in-out infinite;"></div>
+  </div>
+</div>
+<style>
+  @keyframes loading {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(200%); }
+  }
+</style>
+`;
+  }
+
+  /**
+   * 显示加载中（美化版）
+   * @private
+   */
+  _showLoading() {
+    this.container.innerHTML = `
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                min-height: 200px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+                border-radius: 12px;
+                border: 1px solid #e9ecef;
+                padding: 24px;
+                text-align: center;
+                color: #6c757d;
+                font-family: 'Microsoft YaHei', sans-serif;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            ">
+                <div>
+                    <div style="
+                        width: 40px;
+                        height: 40px;
+                        margin: 0 auto 16px;
+                        border: 3px solid #e9ecef;
+                        border-top-color: #85caef;
+                        border-radius: 50%;
+                        animation: spin 1s linear infinite;
+                    "></div>
+                    <div style="font-size: 14px; color: #6c757d;">正在加载词云库...</div>
+                </div>
+            </div>
+            <style>
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+            </style>
+        `;
+  }
+
+  /**
+   * 显示空数据（美化版）
+   * @private
+   */
+  _showEmpty() {
+    this.container.innerHTML = `
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                min-height: 200px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+                border-radius: 12px;
+                border: 1px solid #e9ecef;
+                padding: 24px;
+                text-align: center;
+                color: #adb5bd;
+                font-family: 'Microsoft YaHei', sans-serif;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            ">
+                <div>
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#adb5bd" stroke-width="1.5" style="margin-bottom: 12px;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="9" y1="9" x2="15" y2="15"/>
+                        <line x1="15" y1="9" x2="9" y2="15"/>
+                    </svg>
+                    <div style="font-size: 14px;">没有可显示的词云数据</div>
+                </div>
+            </div>
+        `;
   }
 
   /**
@@ -268,7 +391,9 @@ class DataChangeComparator {
 
     return (weight) => {
       const normalized = (weight - minWeight) / range;
-      return minFontSize + normalized * (maxFontSize - minFontSize);
+      // 使用非线性映射让权重差异更明显
+      const curved = Math.pow(normalized, 0.8);
+      return Math.round(minFontSize + curved * (maxFontSize - minFontSize));
     };
   }
 
@@ -291,8 +416,7 @@ class DataChangeComparator {
       this._words = this.parseData(responseData);
 
       if (this._words.length === 0) {
-        this.container.innerHTML =
-          '<div style="text-align:center; padding:40px; color:#666;">没有可显示的词云数据</div>';
+        this._showEmpty();
         const emptyResult = {
           words: [],
           successCount: 0,
@@ -308,8 +432,7 @@ class DataChangeComparator {
       }
 
       // 显示加载中
-      this.container.innerHTML =
-        '<div style="text-align:center; padding:40px; color:#666;">正在加载词云库...</div>';
+      this._showLoading();
 
       // 加载库并渲染
       this.loadLibrary((error) => {
@@ -352,7 +475,7 @@ class DataChangeComparator {
    */
   _handleError(error, callback) {
     console.error(`[${this._instanceId}] 渲染失败:`, error);
-    this.container.innerHTML = `<div style="color:red; padding:20px;">渲染失败：${error.message}</div>`;
+    this._showError(error.message);
 
     if (callback) callback(error);
     if (this.config.onRenderError) this.config.onRenderError(error);
@@ -378,28 +501,43 @@ class DataChangeComparator {
   }
 
   /**
-   * 渲染画布
+   * 渲染画布 - 美化版
    * @private
    */
   _renderCanvas() {
     // 清空容器
     this.container.innerHTML = "";
 
+    // 创建外层容器（用于美化）
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = `
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            border: 1px solid rgba(255,255,255,0.5);
+            backdrop-filter: blur(10px);
+        `;
+
+    this.container.appendChild(wrapper);
+
     // 计算画布尺寸
-    const containerWidth = this.container.clientWidth || 800;
-    const containerHeight = this.container.clientHeight || 400;
+    const containerWidth = wrapper.clientWidth || 800;
+    const containerHeight = wrapper.clientHeight || 400;
 
     // 创建canvas
     const canvas = document.createElement("canvas");
-    canvas.width = containerWidth - 20;
-    canvas.height = containerHeight - (this.config.showStats ? 60 : 20); // 只给统计信息留空间
-    canvas.style.width = "100%";
-    canvas.style.height = "auto";
-    canvas.style.border = `1px solid ${this.config.wordcloud.borderColor}`;
-    canvas.style.borderRadius = "4px";
-    canvas.style.backgroundColor = this.config.wordcloud.backgroundColor;
+    canvas.width = containerWidth - 40;
+    canvas.height = containerHeight - (this.config.showStats ? 80 : 40);
+    canvas.style.cssText = `
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: block;
+        `;
 
-    this.container.appendChild(canvas);
+    wrapper.appendChild(canvas);
 
     // 配置词云选项
     const options = {
@@ -407,56 +545,129 @@ class DataChangeComparator {
       gridSize: this.config.wordcloud.gridSize,
       weightFactor: this._createWeightFactor(),
       fontFamily: this.config.wordcloud.fontFamily,
+      fontWeight: this.config.wordcloud.fontWeight,
       color: (word, weight, fontSize, index) => {
         return this._words[index][2];
       },
       rotateRatio: this.config.wordcloud.rotateRatio,
-      minRotation: -0.5,
-      maxRotation: 0.5,
-      backgroundColor: this.config.wordcloud.backgroundColor,
+      minRotation: -0.3,
+      maxRotation: 0.3,
+      backgroundColor: "transparent",
       shape: this.config.wordcloud.shape,
       ellipticity: this.config.wordcloud.ellipticity,
       shuffle: false,
       weightMode: "size",
+      hover: null,
+      click: null,
     };
 
     // 执行渲染
     WordCloud(canvas, options);
 
-    // 添加统计信息（只保留统计信息，移除了图例）
+    // 添加统计信息卡片
     if (this.config.showStats) {
-      this._renderStats();
+      this._renderStatsCard(wrapper);
     }
   }
 
   /**
-   * 渲染统计信息 - 简化版本，移除了颜色方块
+   * 渲染统计信息卡片 - 美观版
    * @private
    */
-  _renderStats() {
-    const stats = document.createElement("div");
-    stats.style.marginTop = "10px";
-    stats.style.padding = "8px 12px";
-    stats.style.fontFamily = "Arial, sans-serif";
-    stats.style.fontSize = "13px";
-    stats.style.backgroundColor = "#f5f5f5";
-    stats.style.border = `1px solid ${this.config.wordcloud.borderColor}`;
-    stats.style.borderRadius = "4px";
-
+  _renderStatsCard(wrapper) {
     const successCount = this._getSuccessCount();
     const errorCount = this._getErrorCount();
     const total = successCount + errorCount;
 
-    stats.innerHTML = `
-            <div style="display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
-                <span style="font-weight:bold;">统计:</span>
-                <span style="color:#333;">成功: ${successCount}</span>
-                <span style="color:#333;">失败: ${errorCount}</span>
-                <span style="color:#999;">总计: ${total}</span>
+    const statsCard = document.createElement("div");
+    statsCard.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #ffffff 0%, #fafbfc 100%);
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border: 1px solid rgba(0,0,0,0.03);
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+        `;
+
+    // 左侧统计信息
+    const statsLeft = document.createElement("div");
+    statsLeft.style.cssText = `
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        `;
+
+    // 总计
+    const totalEl = document.createElement("div");
+    totalEl.style.cssText = `
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        `;
+    totalEl.innerHTML = `
+            <span style="font-size: 13px; color: #6c757d;">总计</span>
+            <span style="font-size: 20px; font-weight: 600; color: #212529;">${total}</span>
+        `;
+
+    // 成功
+    const successEl = document.createElement("div");
+    successEl.style.cssText = `
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            padding-left: 16px;
+            border-left: 1px solid #e9ecef;
+        `;
+    successEl.innerHTML = `
+            <span style="font-size: 13px; color: #6c757d;">成功</span>
+            <span style="font-size: 20px; font-weight: 600; color: ${this.config.colors.success};">${successCount}</span>
+        `;
+
+    // 失败
+    const errorEl = document.createElement("div");
+    errorEl.style.cssText = `
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            padding-left: 16px;
+            border-left: 1px solid #e9ecef;
+        `;
+    errorEl.innerHTML = `
+            <span style="font-size: 13px; color: #6c757d;">失败</span>
+            <span style="font-size: 20px; font-weight: 600; color: ${this.config.colors.error};">${errorCount}</span>
+        `;
+
+    statsLeft.appendChild(totalEl);
+    statsLeft.appendChild(successEl);
+    statsLeft.appendChild(errorEl);
+
+    // 右侧颜色说明
+    const legend = document.createElement("div");
+    legend.style.cssText = `
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        `;
+
+    legend.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-block; width: 12px; height: 12px; background: ${this.config.colors.success}; border-radius: 4px; box-shadow: 0 2px 4px rgba(72, 209, 204, 0.3);"></span>
+                <span style="font-size: 13px; color: #495057;">成功表</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-block; width: 12px; height: 12px; background: ${this.config.colors.error}; border-radius: 4px; box-shadow: 0 2px 4px rgba(255, 160, 122, 0.3);"></span>
+                <span style="font-size: 13px; color: #495057;">失败表</span>
             </div>
         `;
 
-    this.container.insertBefore(stats, this.container.firstChild);
+    statsCard.appendChild(statsLeft);
+    statsCard.appendChild(legend);
+
+    wrapper.appendChild(statsCard);
   }
 
   /**
@@ -494,6 +705,9 @@ class DataChangeComparator {
    * 销毁实例
    */
   destroy() {
+    if (this._animationFrame) {
+      cancelAnimationFrame(this._animationFrame);
+    }
     this.clear();
     this.container = null;
     this._currentResponse = null;
