@@ -286,7 +286,7 @@ class TableRowColorManager {
             if (tableContainer) {
               this.startObserver(tableContainer);
             }
-          }, 500);
+          }, 200);
 
           resolve(this);
         } else if (attempts >= maxAttempts) {
