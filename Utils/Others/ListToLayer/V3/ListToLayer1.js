@@ -106,11 +106,14 @@ class ListToLayer {
   }
 }
 
-// 暴露到 window 对象
-window.ListToLayer = ListToLayer;
+// 全局暴露
+if (typeof window !== "undefined") {
+  // 暴露到 window 对象
+  window.ListToLayer = ListToLayer;
 
-// 同时提供一个便捷的工厂函数，兼容 V1 的调用方式
-window.new_listToTree = function(list, options = {}) {
-  const instance = new ListToLayer(options);
-  return instance.convert(list);
-};
+  // 同时提供一个便捷的工厂函数，兼容 V1 的调用方式
+  window.new_listToTree = function (list, options = {}) {
+    const instance = new ListToLayer(options);
+    return instance.convert(list);
+  };
+}
