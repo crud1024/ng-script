@@ -5,8 +5,8 @@ class ListToLayer {
   /**
    * 构造函数
    * @param {Object} options - 配置选项
-   * @param {string} options.idKey - 节点ID键名，默认's_tree_id'
-   * @param {string} options.parentKey - 父节点ID键名，默认's_tree_pid'
+   * @param {string} options.idKey - 节点 ID 键名，默认's_tree_id'
+   * @param {string} options.parentKey - 父节点 ID 键名，默认's_tree_pid'
    * @param {string} options.childrenKey - 子节点键名，默认'children'
    * @param {Object} options.fieldMapping - 字段映射对象，可选
    */
@@ -38,12 +38,12 @@ class ListToLayer {
       return [];
     }
 
-    // 使用reduce构建节点映射
+    // 使用 reduce 构建节点映射
     const nodeMap = list.reduce((acc, node) => {
       const mappedNode = this.mapFields(node);
       const nodeId = node[this.idKey];
 
-      // 确保节点有ID
+      // 确保节点有 ID
       if (nodeId !== undefined && nodeId !== null) {
         acc[nodeId] = {
           ...mappedNode,
@@ -61,12 +61,12 @@ class ListToLayer {
       const currentNode = nodeMap[node[this.idKey]];
       const parentId = node[this.parentKey];
 
-      // 如果当前节点不存在（可能ID无效），跳过
+      // 如果当前节点不存在（可能 ID 无效），跳过
       if (!currentNode) return;
 
       // 查找父节点
       if (parentId !== undefined && parentId !== null && nodeMap[parentId]) {
-        // 将当前节点添加到父节点的children中
+        // 将当前节点添加到父节点的 children 中
         nodeMap[parentId][this.childrenKey].push(currentNode);
       } else {
         // 没有父节点或父节点不存在，作为根节点
@@ -87,7 +87,7 @@ class ListToLayer {
 
     const mappedNode = {};
 
-    // 处理特殊字段（children字段在后续步骤添加）
+    // 处理特殊字段（children 字段在后续步骤添加）
     const specialKeys = [this.childrenKey];
 
     // 遍历原节点属性
@@ -106,5 +106,11 @@ class ListToLayer {
   }
 }
 
-// 暴露到window对象
+// 暴露到 window 对象
 window.ListToLayer = ListToLayer;
+
+// 同时提供一个便捷的工厂函数，兼容 V1 的调用方式
+window.new_listToTree = function(list, options = {}) {
+  const instance = new ListToLayer(options);
+  return instance.convert(list);
+};
