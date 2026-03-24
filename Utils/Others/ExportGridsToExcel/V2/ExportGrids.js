@@ -700,10 +700,8 @@ class ExcelExporter {
     const exporter = new ExcelExporter(options);
     try {
       await exporter.export(designData, resultData, options.fileName);
-      $NG.alert("导出成功！");
     } catch (error) {
       console.error("导出失败:", error);
-      $NG.alert("导出失败：" + (error.message || "未知错误"));
     }
   }
 }
