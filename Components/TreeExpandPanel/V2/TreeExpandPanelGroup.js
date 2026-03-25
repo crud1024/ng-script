@@ -321,10 +321,8 @@ class NGTreeExpandPanel {
       height: 40px;
       width: auto;
       min-width: ${480 + (this.config.defaultLevels - 5) * 40}px;
-      background: #f8f9fa;
       border-radius: 4px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      border: 1px solid #d1d7dc;
       overflow: hidden;
       display: inline-flex;
       align-items: center;
