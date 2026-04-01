@@ -1,6 +1,7 @@
 /**
- * 树形结构展开控制面板（支持多Tab页签 + 直接传入元素）
+ * 树形结构展开控制面板（支持多Tab页签 + 直接传入元素 + 自动记忆并展开新数据）
  * 提供树形结构的展开/收起控制功能，自动识别当前激活的Tab页签，或使用直接指定的元素
+ * 新增功能：记忆用户选择的展开层级，并通过MutationObserver自动应用到后续动态添加的节点
  */
 class NGTreeExpandPanel {
   /**
@@ -21,6 +22,7 @@ class NGTreeExpandPanel {
    * @param {number} [options.defaultLevel=1] - 默认展开层级（当defaultState='level'时有效）
    * @param {boolean} [options.enableTabSync=true] - 是否启用Tab页签自动同步（仅在containerSelector为选择器时有效）
    * @param {string} [options.activeTabPaneSelector='.ant-tabs-tabpane-active'] - 激活的Tab页签选择器
+   * @param {boolean} [options.enableAutoExpand=true] - 是否启用自动展开新数据（记忆用户层级）
    */
   constructor(options = {}) {
     // 合并默认配置
@@ -42,6 +44,7 @@ class NGTreeExpandPanel {
       defaultLevel: 1,
       enableTabSync: true,
       activeTabPaneSelector: ".ant-tabs-tabpane-active",
+      enableAutoExpand: true,
       ...options,
     };
 
@@ -57,6 +60,13 @@ class NGTreeExpandPanel {
     this.state = {
       isExpanded: false,
       currentLevel: this.config.defaultLevel,
+      // 记忆的目标层级（0表示未设置，1表示全部收起，大于1表示展开到该层级）
+      targetLevel:
+        this.config.defaultState === "collapsed"
+          ? 1
+          : this.config.defaultState === "level"
+            ? this.config.defaultLevel
+            : this.config.defaultLevels + 1, // 展开状态时默认设置一个大于最大按钮数的值
     };
 
     // DOM元素引用
@@ -72,14 +82,14 @@ class NGTreeExpandPanel {
     this._toolbarElement = null;
     this._containerElement = null;
 
-    // Tab 切换观察器
+    // Tab切换观察器
     this.tabObserver = null;
-    // 容器内容变化观察器
-    this.containerObserver = null;
-    // 缓存的容器引用（用于智能获取）
-    this._cachedContainer = null;
-    // 当前正在操作的目标容器（防止异步操作期间 Tab 切换导致混乱）
+    // 自动展开观察器
+    this.autoExpandObserver = null;
+    // 当前正在操作的目标容器（防止异步操作期间Tab切换导致混乱）
     this.currentOperationContainer = null;
+    // 防止自动展开递归的标志
+    this._isAutoExpanding = false;
 
     // 初始化组件
     this.init();
@@ -138,15 +148,20 @@ class NGTreeExpandPanel {
     if (this.config.enableTabSync && !this._containerElement) {
       this.startTabSync();
     }
+
+    // 启动自动展开监听（如果启用）
+    if (this.config.enableAutoExpand) {
+      this.startAutoExpandObserver();
+    }
   }
 
   /**
-   * 获取当前激活 Tab 页签中的树形容器，或直接返回用户指定的容器
+   * 获取当前激活Tab页签中的树形容器，或直接返回用户指定的容器
    * @returns {HTMLElement|null} 当前应操作的容器元素
    * @private
    */
   _getCurrentContainer() {
-    // 如果正在进行操作且有记录的操作容器，优先使用操作容器（防止异步操作期间 Tab 切换）
+    // 如果正在进行操作且有记录的操作容器，优先使用操作容器（防止异步操作期间Tab切换）
     if (
       this.currentOperationContainer &&
       document.body.contains(this.currentOperationContainer)
@@ -154,7 +169,7 @@ class NGTreeExpandPanel {
       return this.currentOperationContainer;
     }
 
-    // 如果用户直接指定了容器元素，则直接返回该元素（不跟随 Tab）
+    // 如果用户直接指定了容器元素，则直接返回该元素（不跟随Tab）
     if (
       this._containerElement &&
       document.body.contains(this._containerElement)
@@ -162,15 +177,15 @@ class NGTreeExpandPanel {
       return this._containerElement;
     }
 
-    // 否则根据选择器查找所有匹配的容器，并找到位于激活 Tab 页签中的容器
+    // 否则根据选择器查找所有匹配的容器，并找到位于激活Tab页签中的容器
     const containers = document.querySelectorAll(this.config.containerSelector);
     if (containers.length === 0) return null;
 
     for (const container of containers) {
-      // 查找最近的 tabpane 祖先
+      // 查找最近的tabpane祖先
       const tabPane = container.closest(".ant-tabs-tabpane");
       if (tabPane) {
-        // 检查是否为激活的 tabpane
+        // 检查是否为激活的tabpane
         const isActive =
           tabPane.classList.contains("ant-tabs-tabpane-active") &&
           getComputedStyle(tabPane).display !== "none";
@@ -178,77 +193,13 @@ class NGTreeExpandPanel {
           return container;
         }
       } else {
-        // 不在 Tab 组件内，使用第一个容器（兼容老场景）
+        // 不在Tab组件内，使用第一个容器（兼容老场景）
         return containers[0];
       }
     }
 
-    // 未找到激活 Tab 中的容器，回退到第一个
+    // 未找到激活Tab中的容器，回退到第一个
     return containers[0];
-  }
-
-  /**
-   * 智能获取容器（每次操作前都重新查找，确保获取最新的容器）
-   * 适用于滚动加载或动态渲染场景
-   * @param {boolean} forceRefresh - 是否强制重新查找
-   * @returns {HTMLElement|null} 当前应操作的容器元素
-   * @private
-   */
-  _getSmartContainer(forceRefresh = false) {
-    // 强制刷新或没有缓存时，重新查找
-    if (forceRefresh || !this._cachedContainer) {
-      this._cachedContainer = this._getCurrentContainer();
-
-      // 启动容器内容监听（仅在需要时）
-      if (this._cachedContainer && !this.containerObserver) {
-        this._startContainerObserver();
-      }
-    }
-
-    return this._cachedContainer;
-  }
-
-  /**
-   * 启动容器内容变化监听（监听子元素的动态添加/删除）
-   * @private
-   */
-  _startContainerObserver() {
-    if (!this._cachedContainer || this.containerObserver) return;
-
-    // 监听容器内子元素的变化
-    this.containerObserver = new MutationObserver((mutations) => {
-      let hasChildListChange = false;
-
-      for (const mutation of mutations) {
-        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-          hasChildListChange = true;
-          break;
-        }
-      }
-
-      // 当有新元素添加时，清除缓存以便下次重新获取
-      if (hasChildListChange) {
-        this._cachedContainer = null;
-        console.log("检测到容器内容变化，已清除容器缓存");
-      }
-    });
-
-    this.containerObserver.observe(this._cachedContainer, {
-      childList: true,
-      subtree: true, // 监听子元素树
-    });
-  }
-
-  /**
-   * 停止容器内容监听
-   * @private
-   */
-  _stopContainerObserver() {
-    if (this.containerObserver) {
-      this.containerObserver.disconnect();
-      this.containerObserver = null;
-      this._cachedContainer = null;
-    }
   }
 
   /**
@@ -309,24 +260,24 @@ class NGTreeExpandPanel {
   }
 
   /**
-   * 从当前激活容器同步面板状态（带缓存刷新）
+   * 从当前激活容器同步面板状态
    * @private
    */
   _syncStateFromCurrentContainer() {
-    const container = this._getSmartContainer(false); // 使用缓存，避免频繁查询
+    const container = this._getCurrentContainer();
     if (container) {
       this._syncStateFromContainer(container);
     }
   }
 
   /**
-   * 启动 Tab 页签切换监听
+   * 启动Tab页签切换监听
    * @private
    */
   startTabSync() {
     if (this.tabObserver) return;
 
-    // 监听整个文档的 class 变化，检测 Tab 页签的激活状态变化
+    // 监听整个文档的class变化，检测Tab页签的激活状态变化
     this.tabObserver = new MutationObserver((mutations) => {
       let needSync = false;
       for (const mutation of mutations) {
@@ -335,13 +286,13 @@ class NGTreeExpandPanel {
           mutation.attributeName === "class"
         ) {
           const target = mutation.target;
-          // 检查是否是 tabpane 且 class 变化涉及激活类
+          // 检查是否是tabpane且class变化涉及激活类
           if (
             target.classList &&
             (target.classList.contains("ant-tabs-tabpane") ||
               target.closest(".ant-tabs-tabpane"))
           ) {
-            // 延迟同步，等待 DOM 完全更新
+            // 延迟同步，等待DOM完全更新
             needSync = true;
             break;
           }
@@ -349,9 +300,11 @@ class NGTreeExpandPanel {
       }
       if (needSync) {
         setTimeout(() => {
-          // Tab 切换时清除容器缓存，重新获取最新容器
-          this._cachedContainer = null;
           this._syncStateFromCurrentContainer();
+          // 切换Tab后，重新启动自动展开观察器（如果启用）
+          if (this.config.enableAutoExpand) {
+            this.startAutoExpandObserver();
+          }
         }, 50);
       }
     });
@@ -375,6 +328,103 @@ class NGTreeExpandPanel {
   }
 
   /**
+   * 启动自动展开观察器（监听容器内新增节点并自动展开到目标层级）
+   * @private
+   */
+  startAutoExpandObserver() {
+    if (!this.config.enableAutoExpand) return;
+    // 如果已有观察器，先停止
+    this.stopAutoExpandObserver();
+
+    const container = this._getCurrentContainer();
+    if (!container) return;
+
+    // 创建MutationObserver监听子节点变化
+    this.autoExpandObserver = new MutationObserver((mutations) => {
+      if (this._isAutoExpanding) return; // 防止递归
+      // 检查是否有新增节点
+      let hasNewNodes = false;
+      for (const mutation of mutations) {
+        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+          hasNewNodes = true;
+          break;
+        }
+      }
+      if (hasNewNodes && this.state.targetLevel > 1) {
+        // 延迟执行，确保新节点已完全渲染
+        setTimeout(() => {
+          this._applyTargetLevelToContainer(container);
+        }, this.config.animationDelay);
+      }
+    });
+
+    // 观察容器的子节点变化（包括子树）
+    this.autoExpandObserver.observe(container, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  /**
+   * 停止自动展开观察器
+   * @private
+   */
+  stopAutoExpandObserver() {
+    if (this.autoExpandObserver) {
+      this.autoExpandObserver.disconnect();
+      this.autoExpandObserver = null;
+    }
+  }
+
+  /**
+   * 将当前目标层级应用到指定容器的所有节点
+   * @param {HTMLElement} container - 目标容器
+   * @private
+   */
+  _applyTargetLevelToContainer(container) {
+    if (!container) return;
+    const targetLevel = this.state.targetLevel;
+    if (targetLevel <= 1) return; // 无需展开
+
+    this._isAutoExpanding = true;
+
+    // 获取所有行节点（根据实际DOM结构选择合适的选择器）
+    const rows = container.querySelectorAll(".level-row");
+    rows.forEach((row) => {
+      // 获取当前行的层级
+      const levelMatch = row.className.match(/level-(\d+)/);
+      if (levelMatch) {
+        const currentLevel = parseInt(levelMatch[1], 10);
+        // 如果当前层级小于目标层级，且该节点有折叠图标（即尚未展开），则尝试展开
+        if (currentLevel < targetLevel) {
+          const expandIcon = row.querySelector(
+            ".udp-row-expand-icon.udp-row-expand-icon-collapsed",
+          );
+          if (expandIcon && expandIcon.offsetParent !== null) {
+            // 只展开可见节点（防止展开不可见节点导致性能问题）
+            expandIcon.click();
+          }
+        }
+      }
+    });
+
+    this._isAutoExpanding = false;
+  }
+
+  /**
+   * 更新目标层级并应用到当前容器
+   * @param {number} newLevel - 新的目标层级（1表示全部收起，大于1表示展开到该层）
+   * @private
+   */
+  _updateTargetLevelAndApply(newLevel) {
+    this.state.targetLevel = newLevel;
+    const container = this._getCurrentContainer();
+    if (container && newLevel > 1) {
+      this._applyTargetLevelToContainer(container);
+    }
+  }
+
+  /**
    * 创建面板DOM结构
    * @private
    */
@@ -394,6 +444,7 @@ class NGTreeExpandPanel {
       width: auto;
       min-width: ${480 + (this.config.defaultLevels - 5) * 40}px;
       border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       overflow: hidden;
       display: inline-flex;
       align-items: center;
@@ -755,50 +806,56 @@ class NGTreeExpandPanel {
   }
 
   /**
-   * 层级按钮点击事件处理
+   * 层级按钮点击事件处理（修改：记忆层级并自动应用）
    * @param {number} level - 层级
    * @private
    */
   onLevelButtonClick(level) {
-    console.log(`点击了层级按钮：${level}`);
+    console.log(`点击了层级按钮: ${level}`);
     this.state.currentLevel = level;
-    console.log("当前层级状态:", this.state);
 
-    // 强制刷新容器缓存，确保获取最新的 DOM
-    const container = this._getSmartContainer(true);
+    // 更新目标层级（实际展开层级为 level-1）
+    const targetLevel = level === 1 ? 1 : level - 1;
+    this._updateTargetLevelAndApply(targetLevel);
 
-    if (level == 1) {
-      this.collapseAll(container); // 收起就是一级
+    // 同步按钮状态
+    if (level === 1) {
+      this.state.isExpanded = false;
+      if (this.elements.expandBtn) {
+        this.elements.expandBtn.firstChild.textContent = "展开";
+      }
     } else {
-      this.expandToLevel(level - 1, container);
+      this.state.isExpanded = true;
+      if (this.elements.expandBtn) {
+        this.elements.expandBtn.firstChild.textContent = "收起";
+      }
     }
   }
 
   /**
-   * 展开按钮点击事件处理
+   * 展开按钮点击事件处理（修改：记忆层级）
    * @private
    */
   onExpandButtonClick() {
     this.state.isExpanded = !this.state.isExpanded;
 
-    // 强制刷新容器缓存，确保获取最新的 DOM
-    const container = this._getSmartContainer(true);
-
     if (this.state.isExpanded) {
       this.elements.expandBtn.firstChild.textContent = "收起";
       console.log("执行了展开操作");
-      this.expandAll(container);
+      // 全部展开：目标层级设为一个大数（如999）
+      this._updateTargetLevelAndApply(999);
     } else {
       this.elements.expandBtn.firstChild.textContent = "展开";
       console.log("执行了收起操作");
-      this.collapseAll(container);
+      // 全部收起：目标层级设为1
+      this._updateTargetLevelAndApply(1);
     }
 
     console.log("当前展开状态:", this.state.isExpanded);
   }
 
   /**
-   * To 按钮点击事件处理
+   * To按钮点击事件处理（修改：记忆层级）
    * @private
    */
   onToButtonClick() {
@@ -819,30 +876,30 @@ class NGTreeExpandPanel {
       return;
     }
 
-    // 强制刷新容器缓存，确保获取最新的 DOM
-    const container = this._getSmartContainer(true);
-
     const actualLevel = level - 1; // 对输入值减一
-    console.log(`展开到自定义层级：${level} (实际参数：${actualLevel})`);
-    this.expandToLevel(actualLevel, container);
+    console.log(`展开到自定义层级: ${level} (实际参数: ${actualLevel})`);
+    this._updateTargetLevelAndApply(actualLevel);
   }
 
   /**
-   * 展开到指定层级
+   * 展开到指定层级（修改：支持更新目标层级标志）
    * @param {number} level - 要展开到的层级
    * @param {HTMLElement} [targetContainer] - 目标容器（可选，用于递归时保持同一容器）
+   * @param {boolean} [updateTargetLevel=true] - 是否更新目标层级记忆
    */
-  expandToLevel(level = 0, targetContainer = null) {
+  expandToLevel(level = 0, targetContainer = null, updateTargetLevel = true) {
     if (level <= 0) return;
 
-    // 如果没有指定容器，每次操作前都重新获取最新容器
-    const container = targetContainer || this._getSmartContainer(true);
+    if (updateTargetLevel) {
+      this._updateTargetLevelAndApply(level);
+    }
+
+    // 记录当前操作的容器，防止异步操作期间Tab切换
+    const container = targetContainer || this._getCurrentContainer();
     if (!container) {
       console.log("未找到容器");
       return;
     }
-
-    // 记录当前操作的容器，防止异步操作期间 Tab 切换或滚动导致容器变化
     this.currentOperationContainer = container;
 
     const collapseRecursive = (callback) => {
@@ -871,7 +928,6 @@ class NGTreeExpandPanel {
         return;
       }
 
-      // 每一层展开前都重新查询元素，确保能获取到动态加载的内容
       const elements = container.querySelectorAll(
         ".udp-row-expand-icon.udp-row-expand-icon-collapsed",
       );
@@ -896,21 +952,22 @@ class NGTreeExpandPanel {
   }
 
   /**
-   * 展开所有元素
+   * 展开所有元素（修改：支持更新目标层级标志）
    * @param {HTMLElement} [targetContainer] - 目标容器（可选，用于递归时保持同一容器）
+   * @param {boolean} [updateTargetLevel=true] - 是否更新目标层级记忆
    */
-  expandAll(targetContainer = null) {
-    // 如果没有指定容器，每次操作前都重新获取最新容器
-    const container = targetContainer || this._getSmartContainer(true);
+  expandAll(targetContainer = null, updateTargetLevel = true) {
+    if (updateTargetLevel) {
+      this._updateTargetLevelAndApply(999);
+    }
+
+    const container = targetContainer || this._getCurrentContainer();
     if (!container) {
       console.log("未找到容器");
       return;
     }
-
-    // 记录当前操作的容器，防止异步操作期间 Tab 切换或滚动导致容器变化
     this.currentOperationContainer = container;
 
-    // 每次递归都重新查询元素，确保能获取到动态加载的内容
     const elements = container.querySelectorAll(
       ".udp-row-expand-icon.udp-row-expand-icon-collapsed",
     );
@@ -918,7 +975,10 @@ class NGTreeExpandPanel {
     if (elements.length > 0) {
       console.log(`找到 ${elements.length} 个折叠元素，正在展开...`);
       elements.forEach((el) => el.click());
-      setTimeout(() => this.expandAll(container), this.config.animationDelay);
+      setTimeout(
+        () => this.expandAll(container, false),
+        this.config.animationDelay,
+      );
     } else {
       console.log("所有元素已展开");
       this._syncStateFromContainer(container);
@@ -927,21 +987,22 @@ class NGTreeExpandPanel {
   }
 
   /**
-   * 收起所有元素
+   * 收起所有元素（修改：支持更新目标层级标志）
    * @param {HTMLElement} [targetContainer] - 目标容器（可选，用于递归时保持同一容器）
+   * @param {boolean} [updateTargetLevel=true] - 是否更新目标层级记忆
    */
-  collapseAll(targetContainer = null) {
-    // 如果没有指定容器，每次操作前都重新获取最新容器
-    const container = targetContainer || this._getSmartContainer(true);
+  collapseAll(targetContainer = null, updateTargetLevel = true) {
+    if (updateTargetLevel) {
+      this._updateTargetLevelAndApply(1);
+    }
+
+    const container = targetContainer || this._getCurrentContainer();
     if (!container) {
       console.log("未找到容器");
       return;
     }
-
-    // 记录当前操作的容器，防止异步操作期间 Tab 切换或滚动导致容器变化
     this.currentOperationContainer = container;
 
-    // 每次递归都重新查询元素，确保能获取到动态加载的内容
     const elements = container.querySelectorAll(
       ".udp-row-expand-icon.udp-row-expand-icon-expanded",
     );
@@ -949,7 +1010,10 @@ class NGTreeExpandPanel {
     if (elements.length > 0) {
       console.log(`找到 ${elements.length} 个展开元素，正在收起...`);
       elements.forEach((el) => el.click());
-      setTimeout(() => this.collapseAll(container), this.config.animationDelay);
+      setTimeout(
+        () => this.collapseAll(container, false),
+        this.config.animationDelay,
+      );
     } else {
       console.log("所有元素已收起");
       this._syncStateFromContainer(container);
@@ -958,28 +1022,27 @@ class NGTreeExpandPanel {
   }
 
   /**
-   * 初始化默认状态
+   * 初始化默认状态（修改：同时设置目标层级）
    * @private
    */
   initializeDefaultState() {
     console.log(
-      `初始化默认状态：${this.config.defaultState}, 层级：${this.config.defaultLevel}`,
+      `初始化默认状态: ${this.config.defaultState}, 层级: ${this.config.defaultLevel}`,
     );
 
-    // 延迟执行初始化，确保 DOM 已完全加载
     setTimeout(() => {
-      // 获取当前容器（强制刷新缓存）
-      const container = this._getSmartContainer(true);
+      const container = this._getCurrentContainer();
       if (!container) return;
 
       switch (this.config.defaultState) {
         case "collapsed":
-          this.collapseAll(container);
+          this.collapseAll(container, true);
           this.state.isExpanded = false;
           if (this.elements.expandBtn) {
             this.elements.expandBtn.firstChild.textContent = "展开";
           }
           this.state.currentLevel = 1;
+          this.state.targetLevel = 1;
           break;
 
         case "level":
@@ -988,11 +1051,13 @@ class NGTreeExpandPanel {
             this.config.defaultLevel <= this.config.defaultLevels
           ) {
             if (this.config.defaultLevel === 1) {
-              this.collapseAll(container);
+              this.collapseAll(container, true);
               this.state.currentLevel = 1;
+              this.state.targetLevel = 1;
             } else {
-              this.expandToLevel(this.config.defaultLevel - 1, container);
+              this.expandToLevel(this.config.defaultLevel - 1, container, true);
               this.state.currentLevel = this.config.defaultLevel;
+              this.state.targetLevel = this.config.defaultLevel - 1;
             }
             this.state.isExpanded = this.config.defaultLevel > 1;
             if (this.elements.expandBtn) {
@@ -1003,11 +1068,12 @@ class NGTreeExpandPanel {
             }
           } else {
             console.warn(
-              `默认层级 ${this.config.defaultLevel} 超出范围，使用层级 1`,
+              `默认层级 ${this.config.defaultLevel} 超出范围，使用层级1`,
             );
-            this.collapseAll(container);
+            this.collapseAll(container, true);
             this.state.currentLevel = 1;
             this.state.isExpanded = false;
+            this.state.targetLevel = 1;
             if (this.elements.expandBtn) {
               this.elements.expandBtn.firstChild.textContent = "展开";
             }
@@ -1016,12 +1082,13 @@ class NGTreeExpandPanel {
 
         case "expanded":
         default:
-          this.expandAll(container);
+          this.expandAll(container, true);
           this.state.isExpanded = true;
           if (this.elements.expandBtn) {
             this.elements.expandBtn.firstChild.textContent = "收起";
           }
           this.state.currentLevel = this.config.defaultLevels;
+          this.state.targetLevel = 999; // 全部展开
           break;
       }
     }, 100);
@@ -1038,42 +1105,34 @@ class NGTreeExpandPanel {
   }
 
   /**
-   * 手动同步面板状态到当前激活 Tab
-   */
-  syncState() {
-    // 强制刷新容器缓存
-    this._cachedContainer = null;
-    this._syncStateFromCurrentContainer();
-  }
-
-  /**
-   * 设置面板状态
+   * 设置面板状态（修改：同时设置目标层级）
    * @param {string} state - 状态 ('collapsed' | 'level' | 'expanded')
-   * @param {number} [level] - 层级（当 state='level'时有效）
+   * @param {number} [level] - 层级（当state='level'时有效）
    */
   setState(state, level) {
-    // 强制刷新容器缓存，确保获取最新的 DOM
-    const container = this._getSmartContainer(true);
+    const container = this._getCurrentContainer();
     if (!container) return;
 
     switch (state) {
       case "collapsed":
-        this.collapseAll(container);
+        this.collapseAll(container, true);
         this.state.isExpanded = false;
         if (this.elements.expandBtn) {
           this.elements.expandBtn.firstChild.textContent = "展开";
         }
         this.state.currentLevel = 1;
+        this.state.targetLevel = 1;
         break;
 
       case "level":
         if (level && level >= 1 && level <= this.config.maxCustomLevel) {
           if (level === 1) {
-            this.collapseAll(container);
+            this.collapseAll(container, true);
           } else {
-            this.expandToLevel(level - 1, container);
+            this.expandToLevel(level - 1, container, true);
           }
           this.state.currentLevel = level;
+          this.state.targetLevel = level === 1 ? 1 : level - 1;
           this.state.isExpanded = level > 1;
           if (this.elements.expandBtn) {
             this.elements.expandBtn.firstChild.textContent = this.state
@@ -1085,18 +1144,26 @@ class NGTreeExpandPanel {
         break;
 
       case "expanded":
-        this.expandAll(container);
+        this.expandAll(container, true);
         this.state.isExpanded = true;
         if (this.elements.expandBtn) {
           this.elements.expandBtn.firstChild.textContent = "收起";
         }
         this.state.currentLevel = this.config.defaultLevels;
+        this.state.targetLevel = 999;
         break;
     }
   }
 
   /**
-   * 更新配置
+   * 手动同步面板状态到当前激活Tab
+   */
+  syncState() {
+    this._syncStateFromCurrentContainer();
+  }
+
+  /**
+   * 更新配置（修改：重启自动展开观察器）
    * @param {Object} newOptions - 新配置选项
    */
   updateOptions(newOptions) {
@@ -1111,14 +1178,13 @@ class NGTreeExpandPanel {
   }
 
   /**
-   * 销毁组件
+   * 销毁组件（修改：停止自动展开观察器）
    */
   destroy() {
-    // 停止 Tab 监听
+    // 停止Tab监听
     this.stopTabSync();
-
-    // 停止容器内容监听
-    this._stopContainerObserver();
+    // 停止自动展开监听
+    this.stopAutoExpandObserver();
 
     if (this.elements.panel && this.elements.panel.parentNode) {
       this.elements.panel.parentNode.removeChild(this.elements.panel);
@@ -1135,7 +1201,6 @@ class NGTreeExpandPanel {
 
     this._toolbarElement = null;
     this._containerElement = null;
-    this._cachedContainer = null;
     this.currentOperationContainer = null;
   }
 }
@@ -1156,6 +1221,7 @@ const NGTreeExpandPanelExample = {
       containerSelector: ".row-hover.rows-container.editable",
       defaultState: "expanded",
       enableTabSync: true,
+      enableAutoExpand: true,
     };
 
     return new NGTreeExpandPanel({ ...defaultOptions, ...options });
@@ -1175,6 +1241,7 @@ const NGTreeExpandPanelExample = {
       containerSelector: containerElement,
       defaultState: "expanded",
       enableTabSync: false, // 指定具体元素时自动禁用Tab同步
+      enableAutoExpand: true,
     };
 
     return new NGTreeExpandPanel({ ...defaultOptions, ...options });
@@ -1194,6 +1261,7 @@ const NGTreeExpandPanelExample = {
       defaultState: "level",
       defaultLevel: 2,
       enableTabSync: true,
+      enableAutoExpand: true,
     };
 
     return new NGTreeExpandPanel({ ...defaultOptions, ...options });
@@ -1214,6 +1282,7 @@ const NGTreeExpandPanelExample = {
         containerSelector || ".row-hover.rows-container.editable",
       defaultState: "collapsed",
       enableTabSync: !(containerSelector instanceof HTMLElement), // 如果是元素则禁用同步
+      enableAutoExpand: true,
     };
 
     return new NGTreeExpandPanel({ ...defaultOptions, ...options });
