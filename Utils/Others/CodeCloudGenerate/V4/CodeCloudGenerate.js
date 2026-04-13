@@ -1,0 +1,952 @@
+/**
+ * 数据变更比较器类 - 用于比较和可视化数据变更结果
+ * 使用wordcloud2.js开源库渲染彩色词云
+ * 成功 -> 优雅蓝绿色 (#85caef)，失败 -> 柔和珊瑚粉 (#FFA07A)
+ * 加入UI设计师审美的视觉效果
+ */
+
+class DataChangeComparator {
+  /**
+   * 创建数据变更比较器实例
+   * @param {string|HTMLElement} container - 容器ID或DOM元素
+   * @param {Object} config - 配置选项
+   */
+  constructor(container, config = {}) {
+    // 容器设置
+    this.container =
+      typeof container === "string"
+        ? document.getElementById(container)
+        : container;
+
+    if (!this.container) {
+      throw new Error(`容器不存在: ${container}`);
+    }
+
+    // UI设计师推荐的优雅配色
+    this.config = {
+      // 颜色配置 - 美观的配色方案
+      colors: {
+        success: "#85caef", // 优雅蓝绿色
+        error: "#FFA07A", // 柔和珊瑚粉
+        successLight: "#7FFFD4", // 浅绿色（用于渐变）
+        errorLight: "#FFB6C1", // 浅粉色（用于渐变）
+      },
+      // 权重配置 - 调整权重使视觉效果更好
+      weights: {
+        success: 22,
+        error: 18,
+      },
+      // 词云配置 - 优化视觉效果
+      wordcloud: {
+        gridSize: 16, // 增大网格间距，避免过于拥挤
+        rotateRatio: 0.2, // 减少旋转比例，让文字更易读
+        shape: "circle", // 圆形布局
+        ellipticity: 0.7, // 椭圆度
+        fontFamily:
+          '"Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif',
+        backgroundColor: "#F8F9FA", // 极浅灰背景
+        borderColor: "#E9ECEF", // 浅灰边框
+        minFontSize: 14,
+        maxFontSize: 72,
+        fontWeight: 500, // 中等字重
+        textShadow: "0 2px 4px rgba(0,0,0,0.1)", // 文字阴影
+      },
+      // CDN配置
+      cdn: {
+        primary:
+          "https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.0.6/wordcloud2.min.js",
+        backup:
+          "https://cdn.jsdelivr.net/npm/wordcloud@1.2.0/src/wordcloud2.min.js",
+      },
+      // 文本配置 - 支持动态配置
+      texts: {
+        // 加载中状态
+        loadingTitle: "正在加载词云库...",
+        loadingSubtitle: "请稍候",
+        // 处理中状态（组织迁移中）
+        processingTitle: "组织迁移中",
+        processingSubtitle: "正在处理迁移信息",
+        processingAnimationText: "正在处理迁移信息",
+        // 空数据状态
+        emptyTitle: "没有可显示的词云数据",
+        emptySubtitle: "请检查数据源",
+        // 错误状态
+        errorTitle: "加载失败",
+        errorSubtitle: "请刷新重试",
+        // 通用
+        retryButton: "重试",
+      },
+      // 其他配置
+      showStats: true,
+      autoLoadLibrary: true,
+      enableAnimation: true, // 启用动画效果
+      onRenderStart: null,
+      onRenderComplete: null,
+      onRenderError: null,
+      ...config,
+    };
+
+    // 内部状态
+    this._libraryLoaded = false;
+    this._loading = false;
+    this._loadingCallbacks = [];
+    this._currentResponse = null;
+    this._words = null;
+    this._instanceId = Date.now() + Math.random().toString(36).substr(2, 9);
+    this._animationFrame = null;
+    this._currentDisplayState = null; // 记录当前显示状态
+
+    // 如果配置了自动加载库，则开始加载
+    if (this.config.autoLoadLibrary) {
+      this.loadLibrary();
+    }
+  }
+
+  /**
+   * 更新文本配置
+   * @param {Object} texts - 文本配置对象
+   * @example
+   * comparator.updateTexts({
+   *   processingTitle: "数据同步中",
+   *   processingSubtitle: "正在同步表结构",
+   *   processingAnimationText: "同步中，请稍候..."
+   * });
+   */
+  updateTexts(texts) {
+    this.config.texts = {
+      ...this.config.texts,
+      ...texts,
+    };
+
+    // 根据当前显示状态刷新显示
+    if (this._currentDisplayState === "loading") {
+      this._showLoading();
+    } else if (this._currentDisplayState === "processing") {
+      this._showProcessing();
+    } else if (this._currentDisplayState === "empty") {
+      this._showEmpty();
+    }
+  }
+
+  /**
+   * 显示处理中状态（组织迁移中）- 公开方法
+   */
+  showProcessing() {
+    this._showProcessing();
+  }
+
+  /**
+   * 显示加载中状态 - 公开方法
+   */
+  showLoading() {
+    this._showLoading();
+  }
+
+  /**
+   * 加载wordcloud2.js库
+   * @param {Function} callback - 加载完成回调
+   */
+  loadLibrary(callback) {
+    // 如果库已加载，直接执行回调
+    if (typeof WordCloud !== "undefined") {
+      this._libraryLoaded = true;
+      if (callback) callback(null);
+      return;
+    }
+
+    // 保存回调
+    if (callback) {
+      this._loadingCallbacks.push(callback);
+    }
+
+    // 如果已经在加载中，不再重复加载
+    if (this._loading) return;
+    this._loading = true;
+
+    const loadScript = (url, isBackup = false) => {
+      const script = document.createElement("script");
+      script.type = "text/javascript";
+      script.src = url;
+
+      script.onload = () => {
+        this._libraryLoaded = true;
+        this._loading = false;
+        // 执行所有等待的回调
+        this._loadingCallbacks.forEach((cb) => cb(null));
+        this._loadingCallbacks = [];
+      };
+
+      script.onerror = () => {
+        if (!isBackup) {
+          console.warn("主CDN加载失败，尝试备用CDN...");
+          loadScript(this.config.cdn.backup, true);
+        } else {
+          this._loading = false;
+          const error = new Error("词云库加载失败，请检查网络");
+          this._loadingCallbacks.forEach((cb) => cb(error));
+          this._loadingCallbacks = [];
+
+          if (this.container) {
+            this._showError("词云库加载失败，请刷新重试");
+          }
+        }
+      };
+
+      document.head.appendChild(script);
+    };
+
+    loadScript(this.config.cdn.primary);
+  }
+
+  /**
+   * 显示处理中状态（组织迁移中）- 美化版
+   * @private
+   */
+  _showProcessing() {
+    this._currentDisplayState = "processing";
+    const { processingTitle, processingSubtitle, processingAnimationText } =
+      this.config.texts;
+
+    this.container.innerHTML = `
+<div style="
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  padding: 40px 20px;
+  text-align: center;
+  color: #666;
+  background: #f9f9f9;
+  border-radius: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+">
+  <svg t="1776060905925" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="7163" width="60" height="60" style="margin-left: 8px;">
+  <path d="M512 512m-460.8 0a460.8 460.8 0 1 0 921.6 0 460.8 460.8 0 1 0-921.6 0Z" fill="#CADEFF" p-id="7164"></path>
+  <path d="M512 512m-330.4448 0a330.4448 330.4448 0 1 0 660.8896 0 330.4448 330.4448 0 1 0-660.8896 0Z" fill="#69ADFF" p-id="7165"></path>
+  <path d="M668.8768 582.7584h-19.9168V469.4528a136.96 136.96 0 0 0-110.1824-134.2976v-5.7856a26.7776 26.7776 0 0 0-53.5552 0v5.7856a136.96 136.96 0 0 0-110.1824 134.2976v113.3056h-19.9168a23.04 23.04 0 0 0 0 46.08h313.7536a23.04 23.04 0 0 0 0-46.08zM512 706.56a45.1584 45.1584 0 0 0 45.1584-45.1072H466.8416A45.1584 45.1584 0 0 0 512 706.56z" fill="#FFFFFF" p-id="7166"></path>
+</svg>
+<br/>
+  <h3 style="margin: 0 0 8px 0; font-weight: 500; color: #444;">${this._escapeHtml(processingTitle)}</h3>
+  <p style="margin: 0; font-size: 14px; line-height: 1.5; max-width: 300px;">
+    ${this._escapeHtml(processingSubtitle)}
+  </p>
+  <div style="margin-top: 20px; width: 120px; height: 4px; background: #eaeaea; border-radius: 2px; overflow: hidden;">
+    <div style="width: 40%; height: 100%; background: #4dabf7; border-radius: 2px; animation: loading 2s ease-in-out infinite;"></div>
+  </div>
+  <p style="margin-top: 16px; font-size: 12px; color: #999;">
+    ${this._escapeHtml(processingAnimationText)}
+  </p>
+</div>
+<style>
+  @keyframes loading {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(200%); }
+  }
+</style>
+`;
+  }
+
+  /**
+   * 显示错误信息（美化版）
+   * @private
+   * @param {string} message - 错误消息
+   */
+  _showError(message) {
+    this._currentDisplayState = "error";
+    const { errorTitle, errorSubtitle, retryButton } = this.config.texts;
+
+    console.log(message);
+    this.container.innerHTML = `
+<div style="
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  padding: 40px 20px;
+  text-align: center;
+  color: #666;
+  background: #f9f9f9;
+  border-radius: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+">
+  <svg style="width: 60px; height: 60px; margin-bottom: 20px; color: #dc3545;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="12" y1="8" x2="12" y2="12"/>
+    <line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
+  <h3 style="margin: 0 0 8px 0; font-weight: 500; color: #dc3545;">${this._escapeHtml(errorTitle)}</h3>
+  <p style="margin: 0; font-size: 14px; line-height: 1.5; max-width: 300px;">
+    ${this._escapeHtml(errorSubtitle)}
+  </p>
+  <div style="margin-top: 20px; font-size: 12px; color: #999;">
+    ${this._escapeHtml(message.substring(0, 100))}
+  </div>
+  <button id="retry-btn-${this._instanceId}" style="
+    margin-top: 20px;
+    padding: 8px 24px;
+    background: #4dabf7;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s;
+  " onmouseover="this.style.background='#3b8fd9'" onmouseout="this.style.background='#4dabf7'">
+    ${this._escapeHtml(retryButton)}
+  </button>
+</div>
+`;
+
+    // 绑定重试按钮事件
+    const retryBtn = document.getElementById(`retry-btn-${this._instanceId}`);
+    if (retryBtn && this._currentResponse) {
+      retryBtn.addEventListener("click", () => {
+        this.render(this._currentResponse);
+      });
+    }
+  }
+
+  /**
+   * 显示加载中（美化版）
+   * @private
+   */
+  _showLoading() {
+    this._currentDisplayState = "loading";
+    const { loadingTitle, loadingSubtitle } = this.config.texts;
+
+    this.container.innerHTML = `
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                min-height: 200px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+                border-radius: 12px;
+                border: 1px solid #e9ecef;
+                padding: 24px;
+                text-align: center;
+                color: #6c757d;
+                font-family: 'Microsoft YaHei', sans-serif;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            ">
+                <div>
+                    <div style="
+                        width: 40px;
+                        height: 40px;
+                        margin: 0 auto 16px;
+                        border: 3px solid #e9ecef;
+                        border-top-color: #85caef;
+                        border-radius: 50%;
+                        animation: spin 1s linear infinite;
+                    "></div>
+                    <div style="font-size: 14px; color: #6c757d;">${this._escapeHtml(loadingTitle)}</div>
+                    <div style="font-size: 12px; color: #adb5bd; margin-top: 8px;">${this._escapeHtml(loadingSubtitle)}</div>
+                </div>
+            </div>
+            <style>
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+            </style>
+        `;
+  }
+
+  /**
+   * 显示空数据（美化版）
+   * @private
+   */
+  _showEmpty() {
+    this._currentDisplayState = "empty";
+    const { emptyTitle, emptySubtitle } = this.config.texts;
+
+    this.container.innerHTML = `
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                min-height: 200px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+                border-radius: 12px;
+                border: 1px solid #e9ecef;
+                padding: 24px;
+                text-align: center;
+                color: #adb5bd;
+                font-family: 'Microsoft YaHei', sans-serif;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            ">
+                <div>
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#adb5bd" stroke-width="1.5" style="margin-bottom: 12px;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="9" y1="9" x2="15" y2="15"/>
+                        <line x1="15" y1="9" x2="9" y2="15"/>
+                    </svg>
+                    <div style="font-size: 14px;">${this._escapeHtml(emptyTitle)}</div>
+                    <div style="font-size: 12px; margin-top: 8px;">${this._escapeHtml(emptySubtitle)}</div>
+                </div>
+            </div>
+        `;
+  }
+
+  /**
+   * HTML转义，防止XSS
+   * @private
+   */
+  _escapeHtml(str) {
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  /**
+   * 解析响应数据 - 支持多种数据格式
+   * @param {Object} responseData - 输入数据
+   * @returns {Array} 解析后的词云数据，解析失败返回空数组
+   */
+  parseData(responseData) {
+    // 如果数据为空或未定义，返回空数组
+    if (!responseData) {
+      console.log("数据为空");
+      return [];
+    }
+
+    try {
+      let parsedData = responseData;
+
+      // 情况1: 数据直接是 {success: [...], errors: [...]} 格式
+      if (
+        responseData &&
+        (Array.isArray(responseData.success) ||
+          Array.isArray(responseData.errors))
+      ) {
+        parsedData = responseData;
+      }
+      // 情况2: 数据是 {IsOk: true, Message: "{\"success\":[...]}"} 格式
+      else if (responseData && responseData.Message) {
+        try {
+          parsedData = JSON.parse(responseData.Message);
+        } catch (e) {
+          console.log("Message字段JSON解析失败，显示处理状态");
+          return [];
+        }
+      }
+      // 情况3: 数据本身就是字符串
+      else if (typeof responseData === "string") {
+        try {
+          parsedData = JSON.parse(responseData);
+        } catch (e) {
+          console.log("数据字符串解析失败，显示处理状态");
+          return [];
+        }
+      } else {
+        console.log("无法识别的数据格式，显示处理状态");
+        return [];
+      }
+
+      // 检查是否有有效数据
+      if (!parsedData.success && !parsedData.errors) {
+        console.log("数据格式不正确，缺少success或errors数组");
+        return [];
+      }
+
+      // 检查是否至少有一个非空数组
+      const hasSuccess =
+        Array.isArray(parsedData.success) && parsedData.success.length > 0;
+      const hasErrors =
+        Array.isArray(parsedData.errors) && parsedData.errors.length > 0;
+
+      if (!hasSuccess && !hasErrors) {
+        console.log("success和errors数组都为空");
+        return [];
+      }
+
+      const wordItems = [];
+      const { colors, weights } = this.config;
+
+      // 处理成功列表
+      if (Array.isArray(parsedData.success)) {
+        parsedData.success.forEach((item) => {
+          let tableName = item;
+          if (item && typeof item === "object") {
+            tableName = item.tableName || item.name || JSON.stringify(item);
+          }
+
+          if (tableName && String(tableName).trim()) {
+            wordItems.push([
+              String(tableName).trim(),
+              weights.success,
+              colors.success,
+            ]);
+          }
+        });
+      }
+
+      // 处理错误列表
+      if (Array.isArray(parsedData.errors)) {
+        parsedData.errors.forEach((errMsg) => {
+          const tableName = this._extractTableNameFromError(errMsg);
+          if (tableName) {
+            wordItems.push([tableName, weights.error, colors.error]);
+          }
+        });
+      }
+
+      // 去重并合并权重
+      const result = this._deduplicateWords(wordItems);
+
+      if (result.length === 0) {
+        console.log("没有提取到有效的表名数据");
+      }
+
+      return result;
+    } catch (error) {
+      // 任何解析错误都返回空数组，显示处理状态
+      console.log("数据解析异常:", error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 从错误消息中提取表名
+   * @private
+   */
+  _extractTableNameFromError(errMsg) {
+    if (!errMsg) return null;
+
+    const errStr = String(errMsg);
+
+    // 错误消息格式: "迁移xxx错误：\n### Error updating "
+    const match = errStr.match(/^迁移([a-zA-Z0-9_]+)错误/);
+    if (match && match[1]) {
+      return match[1];
+    }
+
+    // 尝试匹配 "同步xxx错误"
+    const syncMatch = errStr.match(/^同步([a-zA-Z0-9_]+)错误/);
+    if (syncMatch && syncMatch[1]) {
+      return syncMatch[1];
+    }
+
+    // 尝试提取第一个合法的表名
+    const words = errStr.split(/[\s:：\n]/);
+    for (let word of words) {
+      if (word && word.length > 0 && /^[a-zA-Z0-9_]+$/.test(word)) {
+        return word;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 去重并合并权重
+   * @private
+   */
+  _deduplicateWords(wordItems) {
+    const wordMap = new Map();
+
+    wordItems.forEach(([text, weight, color]) => {
+      if (!wordMap.has(text) || wordMap.get(text)[1] < weight) {
+        wordMap.set(text, [text, weight, color]);
+      }
+    });
+
+    return Array.from(wordMap.values());
+  }
+
+  /**
+   * 计算权重到字体大小的映射函数
+   * @private
+   */
+  _createWeightFactor() {
+    const words = this._words;
+    const minWeight = Math.min(...words.map((w) => w[1]));
+    const maxWeight = Math.max(...words.map((w) => w[1]));
+    const range = maxWeight - minWeight || 1;
+    const { minFontSize, maxFontSize } = this.config.wordcloud;
+
+    return (weight) => {
+      const normalized = (weight - minWeight) / range;
+      // 使用非线性映射让权重差异更明显
+      const curved = Math.pow(normalized, 0.8);
+      return Math.round(minFontSize + curved * (maxFontSize - minFontSize));
+    };
+  }
+
+  /**
+   * 渲染词云
+   * @param {Object} responseData - 输入数据
+   * @param {Function} callback - 渲染完成回调 (error, result)
+   */
+  render(responseData, callback) {
+    try {
+      // 触发渲染开始回调
+      if (this.config.onRenderStart) {
+        this.config.onRenderStart();
+      }
+
+      // 保存数据
+      this._currentResponse = responseData;
+
+      // 解析数据 - 现在不会抛出异常，失败时返回空数组
+      this._words = this.parseData(responseData);
+
+      // 如果没有有效数据，显示处理中状态
+      if (!this._words || this._words.length === 0) {
+        console.log("没有有效数据，显示处理中状态");
+        this._showProcessing();
+        const emptyResult = {
+          words: [],
+          successCount: 0,
+          errorCount: 0,
+          total: 0,
+          successTables: [],
+          errorTables: [],
+          isProcessing: true, // 标记为处理中状态
+        };
+        if (callback) callback(null, emptyResult);
+        if (this.config.onRenderComplete)
+          this.config.onRenderComplete(emptyResult);
+        return;
+      }
+
+      // 显示加载中
+      this._showLoading();
+
+      // 加载库并渲染
+      this.loadLibrary((error) => {
+        if (error) {
+          this._handleError(error, callback);
+          return;
+        }
+
+        try {
+          this._renderCanvas();
+
+          const result = {
+            words: this._words,
+            successCount: this._getSuccessCount(),
+            errorCount: this._getErrorCount(),
+            total: this._words.length,
+            successTables: this.getSuccessTables(),
+            errorTables: this.getErrorTables(),
+            isProcessing: false,
+          };
+
+          console.log(
+            `[${this._instanceId}] 词云渲染完成，成功: ${result.successCount}个，失败: ${result.errorCount}个`,
+          );
+
+          if (callback) callback(null, result);
+          if (this.config.onRenderComplete)
+            this.config.onRenderComplete(result);
+        } catch (renderError) {
+          this._handleError(renderError, callback);
+        }
+      });
+    } catch (error) {
+      // 外层捕获异常时也显示处理状态
+      console.error("渲染异常:", error);
+      this._showProcessing();
+      if (callback)
+        callback(null, { isProcessing: true, error: error.message });
+      if (this.config.onRenderComplete)
+        this.config.onRenderComplete({
+          isProcessing: true,
+          error: error.message,
+        });
+    }
+  }
+
+  /**
+   * 处理错误
+   * @private
+   */
+  _handleError(error, callback) {
+    console.error(`[${this._instanceId}] 渲染失败:`, error);
+    this._showError(error.message);
+
+    if (callback) callback(error);
+    if (this.config.onRenderError) this.config.onRenderError(error);
+  }
+
+  /**
+   * 获取成功数量
+   * @private
+   */
+  _getSuccessCount() {
+    if (!this._words) return 0;
+    return this._words.filter((w) => w[2] === this.config.colors.success)
+      .length;
+  }
+
+  /**
+   * 获取失败数量
+   * @private
+   */
+  _getErrorCount() {
+    if (!this._words) return 0;
+    return this._words.filter((w) => w[2] === this.config.colors.error).length;
+  }
+
+  /**
+   * 渲染画布 - 美化版
+   * @private
+   */
+  _renderCanvas() {
+    // 清空容器
+    this.container.innerHTML = "";
+
+    // 创建外层容器（用于美化）
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = `
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            border: 1px solid rgba(255,255,255,0.5);
+            backdrop-filter: blur(10px);
+        `;
+
+    this.container.appendChild(wrapper);
+
+    // 计算画布尺寸
+    const containerWidth = wrapper.clientWidth || 800;
+    const containerHeight = wrapper.clientHeight || 400;
+
+    // 创建canvas
+    const canvas = document.createElement("canvas");
+    canvas.width = containerWidth - 40;
+    canvas.height = containerHeight - (this.config.showStats ? 80 : 40);
+    canvas.style.cssText = `
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: block;
+        `;
+
+    wrapper.appendChild(canvas);
+
+    // 配置词云选项
+    const options = {
+      list: this._words,
+      gridSize: this.config.wordcloud.gridSize,
+      weightFactor: this._createWeightFactor(),
+      fontFamily: this.config.wordcloud.fontFamily,
+      fontWeight: this.config.wordcloud.fontWeight,
+      color: (word, weight, fontSize, index) => {
+        return this._words[index][2];
+      },
+      rotateRatio: this.config.wordcloud.rotateRatio,
+      minRotation: -0.3,
+      maxRotation: 0.3,
+      backgroundColor: "transparent",
+      shape: this.config.wordcloud.shape,
+      ellipticity: this.config.wordcloud.ellipticity,
+      shuffle: false,
+      weightMode: "size",
+      hover: null,
+      click: null,
+    };
+
+    // 执行渲染
+    WordCloud(canvas, options);
+
+    // 添加统计信息卡片
+    if (this.config.showStats) {
+      this._renderStatsCard(wrapper);
+    }
+  }
+
+  /**
+   * 渲染统计信息卡片 - 美观版
+   * @private
+   */
+  _renderStatsCard(wrapper) {
+    const successCount = this._getSuccessCount();
+    const errorCount = this._getErrorCount();
+    const total = successCount + errorCount;
+
+    const statsCard = document.createElement("div");
+    statsCard.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #ffffff 0%, #fafbfc 100%);
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border: 1px solid rgba(0,0,0,0.03);
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+        `;
+
+    // 左侧统计信息
+    const statsLeft = document.createElement("div");
+    statsLeft.style.cssText = `
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        `;
+
+    // 总计
+    const totalEl = document.createElement("div");
+    totalEl.style.cssText = `
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        `;
+    totalEl.innerHTML = `
+            <span style="font-size: 13px; color: #6c757d;">总计</span>
+            <span style="font-size: 20px; font-weight: 600; color: #212529;">${total}</span>
+        `;
+
+    // 成功
+    const successEl = document.createElement("div");
+    successEl.style.cssText = `
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            padding-left: 16px;
+            border-left: 1px solid #e9ecef;
+        `;
+    successEl.innerHTML = `
+            <span style="font-size: 13px; color: #6c757d;">成功</span>
+            <span style="font-size: 20px; font-weight: 600; color: ${this.config.colors.success};">${successCount}</span>
+        `;
+
+    // 失败
+    const errorEl = document.createElement("div");
+    errorEl.style.cssText = `
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            padding-left: 16px;
+            border-left: 1px solid #e9ecef;
+        `;
+    errorEl.innerHTML = `
+            <span style="font-size: 13px; color: #6c757d;">失败</span>
+            <span style="font-size: 20px; font-weight: 600; color: ${this.config.colors.error};">${errorCount}</span>
+        `;
+
+    statsLeft.appendChild(totalEl);
+    statsLeft.appendChild(successEl);
+    statsLeft.appendChild(errorEl);
+
+    // 右侧颜色说明
+    const legend = document.createElement("div");
+    legend.style.cssText = `
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        `;
+
+    legend.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-block; width: 12px; height: 12px; background: ${this.config.colors.success}; border-radius: 4px; box-shadow: 0 2px 4px rgba(72, 209, 204, 0.3);"></span>
+                <span style="font-size: 13px; color: #495057;">成功</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-block; width: 12px; height: 12px; background: ${this.config.colors.error}; border-radius: 4px; box-shadow: 0 2px 4px rgba(255, 160, 122, 0.3);"></span>
+                <span style="font-size: 13px; color: #495057;">失败</span>
+            </div>
+        `;
+
+    statsCard.appendChild(statsLeft);
+    statsCard.appendChild(legend);
+
+    wrapper.appendChild(statsCard);
+  }
+
+  /**
+   * 重新渲染（使用相同的数据）
+   * @param {Function} callback - 渲染完成回调
+   */
+  refresh(callback) {
+    if (this._currentResponse) {
+      this.render(this._currentResponse, callback);
+    }
+  }
+
+  /**
+   * 更新配置
+   * @param {Object} newConfig - 新配置
+   */
+  updateConfig(newConfig) {
+    this.config = {
+      ...this.config,
+      ...newConfig,
+    };
+  }
+
+  /**
+   * 清除渲染内容
+   */
+  clear() {
+    if (this.container) {
+      this.container.innerHTML = "";
+    }
+    this._words = null;
+    this._currentDisplayState = null;
+  }
+
+  /**
+   * 销毁实例
+   */
+  destroy() {
+    if (this._animationFrame) {
+      cancelAnimationFrame(this._animationFrame);
+    }
+    this.clear();
+    this.container = null;
+    this._currentResponse = null;
+    this._words = null;
+    this._loadingCallbacks = [];
+  }
+
+  /**
+   * 获取当前词云数据
+   * @returns {Array} 词云数据
+   */
+  getWords() {
+    return this._words ? [...this._words] : [];
+  }
+
+  /**
+   * 获取成功列表
+   * @returns {Array} 成功表名数组
+   */
+  getSuccessTables() {
+    if (!this._words) return [];
+    return this._words
+      .filter((w) => w[2] === this.config.colors.success)
+      .map((w) => w[0]);
+  }
+
+  /**
+   * 获取失败列表
+   * @returns {Array} 失败表名数组
+   */
+  getErrorTables() {
+    if (!this._words) return [];
+    return this._words
+      .filter((w) => w[2] === this.config.colors.error)
+      .map((w) => w[0]);
+  }
+}
+
+// 暴露到全局
+if (typeof window !== "undefined") {
+  window.DataChangeComparator = DataChangeComparator;
+}
