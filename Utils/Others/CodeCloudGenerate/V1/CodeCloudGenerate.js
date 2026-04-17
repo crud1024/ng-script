@@ -160,10 +160,12 @@ class DataChangeComparator {
   border-radius: 8px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
 ">
-  <svg style="width: 60px; height: 60px; margin-bottom: 20px; color: #bbb;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M12 2v4m0 12v4m-8-8H2m20 0h-2m-2-6.24A7.12 7.12 0 0 0 19 8a7 7 0 0 0-14 0c0 1.76.65 3.36 1.71 4.6"></path>
-    <path d="M7.21 15.26A6.972 6.972 0 0 0 12 20a6.972 6.972 0 0 0 4.79-4.74"></path>
-  </svg>
+  <svg t="1776060905925" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="7163" width="60" height="60" style="margin-left: 8px;">
+  <path d="M512 512m-460.8 0a460.8 460.8 0 1 0 921.6 0 460.8 460.8 0 1 0-921.6 0Z" fill="#CADEFF" p-id="7164"></path>
+  <path d="M512 512m-330.4448 0a330.4448 330.4448 0 1 0 660.8896 0 330.4448 330.4448 0 1 0-660.8896 0Z" fill="#69ADFF" p-id="7165"></path>
+  <path d="M668.8768 582.7584h-19.9168V469.4528a136.96 136.96 0 0 0-110.1824-134.2976v-5.7856a26.7776 26.7776 0 0 0-53.5552 0v5.7856a136.96 136.96 0 0 0-110.1824 134.2976v113.3056h-19.9168a23.04 23.04 0 0 0 0 46.08h313.7536a23.04 23.04 0 0 0 0-46.08zM512 706.56a45.1584 45.1584 0 0 0 45.1584-45.1072H466.8416A45.1584 45.1584 0 0 0 512 706.56z" fill="#FFFFFF" p-id="7166"></path>
+</svg>
+<br/>
   <h3 style="margin: 0 0 8px 0; font-weight: 500; color: #444;">组织迁移中</h3>
   <p style="margin: 0; font-size: 14px; line-height: 1.5; max-width: 300px;">
     正在处理迁移信息
