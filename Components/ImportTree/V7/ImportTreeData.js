@@ -706,9 +706,9 @@ class NewTreeStructureGenerator {
         }
       });
 
-      this.showAlert(
-        `自动匹配完成，已匹配 ${Object.keys(matches).length} 个字段`,
-      );
+      // this.showAlert(
+      //   `自动匹配完成，已匹配 ${Object.keys(matches).length} 个字段`,
+      // );
     });
 
     ruleContainer.appendChild(ruleLabel);
