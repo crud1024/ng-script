@@ -56,7 +56,7 @@ class NewTreeStructureGenerator {
       console.log("NewTreeStructureGenerator 初始化完成");
     } catch (error) {
       console.error("初始化失败:", error);
-      this.showMessage("初始化失败: " + error.message, "error");
+      this.showAlert("初始化失败: " + error.message);
     }
   }
 
@@ -418,7 +418,7 @@ class NewTreeStructureGenerator {
     script.src = this.options.sheetJSUrl;
     script.onload = callback;
     script.onerror = () => {
-      this.showMessage("加载 SheetJS 库失败，请检查网络连接", "error");
+      this.showAlert("加载 SheetJS 库失败，请检查网络连接");
     };
     document.head.appendChild(script);
   }
@@ -468,7 +468,7 @@ class NewTreeStructureGenerator {
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           if (jsonData.length < 2) {
-            this.showMessage("文件内容为空或格式不正确", "warning");
+            this.showAlert("文件内容为空或格式不正确");
             return;
           }
 
@@ -476,12 +476,12 @@ class NewTreeStructureGenerator {
           this.showImportDialog(headers, jsonData);
         } catch (error) {
           console.error("解析 Excel 文件失败:", error);
-          this.showMessage("解析 Excel 文件失败: " + error.message, "error");
+          this.showAlert("解析 Excel 文件失败: " + error.message);
         }
       };
 
       reader.onerror = () => {
-        this.showMessage("读取文件失败", "error");
+        this.showAlert("读取文件失败");
       };
 
       reader.readAsArrayBuffer(file);
@@ -672,9 +672,8 @@ class NewTreeStructureGenerator {
         }
       });
 
-      this.showMessage(
+      this.showAlert(
         `自动匹配完成，已匹配 ${Object.keys(matches).length} 个字段`,
-        "success",
       );
     });
 
@@ -873,12 +872,14 @@ class NewTreeStructureGenerator {
       if (!this.options.defaultTreeMode) {
         e.preventDefault();
         e.stopPropagation();
-        this.showMessage(
+        this.showAlert(
           "当前配置已锁定为平级模式，如需启用层级模式请修改初始化参数",
-          "warning",
         );
         return;
       }
+      e.stopPropagation();
+      e.preventDefault();
+      toggleSwitch(!this.treeModeEnabled);
     });
 
     toggleSwitch(this.treeModeEnabled);
@@ -916,9 +917,8 @@ class NewTreeStructureGenerator {
         fieldMappings[fieldName] = select.value;
 
         if (isRequired && (!select.value || select.value === "")) {
-          this.showMessage(
+          this.showAlert(
             `请配置必填字段"${select.previousElementSibling.textContent}"的映射`,
-            "error",
           );
           missingRequired = true;
         }
@@ -931,7 +931,7 @@ class NewTreeStructureGenerator {
         const separator = separatorInput.value.trim();
 
         if (!levelField || !separator) {
-          this.showMessage("请填写完整的层级配置信息", "warning");
+          this.showAlert("请填写完整的层级配置信息");
           return;
         }
 
@@ -953,7 +953,7 @@ class NewTreeStructureGenerator {
           document.body.removeChild(overlay);
         } catch (error) {
           console.error("生成树形结构失败:", error);
-          this.showMessage("生成失败: " + error.message, "error");
+          this.showAlert("生成失败: " + error.message);
         }
       } else {
         try {
@@ -969,7 +969,7 @@ class NewTreeStructureGenerator {
           document.body.removeChild(overlay);
         } catch (error) {
           console.error("导入平级数据失败:", error);
-          this.showMessage("导入失败: " + error.message, "error");
+          this.showAlert("导入失败: " + error.message);
         }
       }
     });
@@ -1588,113 +1588,65 @@ class NewTreeStructureGenerator {
       dgrid
         .addRows(importData)
         .then(() => {
-          this.showMessage(
+          this.showAlert(
             `导入成功！${isTreeMode ? "(层级模式)" : "(平级模式)"}`,
-            "success",
           );
         })
         .catch((error) => {
           console.error("导入失败:", error);
-          this.showMessage("导入失败：" + error.message, "error");
+          this.showAlert("导入失败：" + error.message);
         });
     } catch (error) {
       console.error("导入数据到网格失败:", error);
-      this.showMessage("导入失败：" + error.message, "error");
+      this.showAlert("导入失败：" + error.message);
     }
   }
 
   /**
-   * 显示消息提示
+   * 使用 OSD_Message 显示消息提示
    * @param {string} message 消息内容
-   * @param {string} type 消息类型: 'success', 'error', 'warning', 'info', 'important'
+   * @param {string} type 类型：'success' | 'error' | 'info' | 'warning'，默认为 'info'
    */
-  showMessage(message, type = "info") {
-    // 如果OSD_Message已加载,直接使用
-    if (window.OSD_Message) {
-      this._displayMessage(message, type);
-      return;
-    }
-
-    // 动态加载OSD_Message脚本
-    const scriptUrl =
-      "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V3/OSD_Message.js";
-
-    // 检查是否已经在加载中
-    if (this._loadingMessageScript) {
-      // 等待加载完成后显示
-      this._pendingMessages = this._pendingMessages || [];
-      this._pendingMessages.push({ message, type });
-      return;
-    }
-
-    this._loadingMessageScript = true;
-    this._pendingMessages = [{ message, type }];
-
-    const script = document.createElement("script");
-    script.src = scriptUrl;
-    script.onload = () => {
-      this._loadingMessageScript = false;
-      // 处理所有待显示的消息
-      if (this._pendingMessages && this._pendingMessages.length > 0) {
-        this._pendingMessages.forEach((msg) => {
-          this._displayMessage(msg.message, msg.type);
-        });
-        this._pendingMessages = [];
-      }
-    };
-    script.onerror = () => {
-      this._loadingMessageScript = false;
-      console.error("加载 OSD_Message 失败,降级使用原生alert");
-      // 降级处理:使用原生alert
-      if (this._pendingMessages && this._pendingMessages.length > 0) {
-        this._pendingMessages.forEach((msg) => {
-          alert(msg.message);
-        });
-        this._pendingMessages = [];
-      }
-    };
-    document.head.appendChild(script);
-  }
-
-  /**
-   * 实际显示消息
-   * @private
-   */
-  _displayMessage(message, type) {
-    try {
-      switch (type) {
-        case "success":
-          window.OSD_Message.success(message);
-          break;
-        case "error":
-          window.OSD_Message.error(message);
-          break;
-        case "warning":
-          window.OSD_Message.warning(message);
-          break;
-        case "important":
-          window.OSD_Message.show({
-            type: "important",
-            content: message,
-            duration: 5,
-            position: "center-top",
-            showClose: true,
-          });
-          break;
-        case "info":
-        default:
-          window.OSD_Message.info(message);
-          break;
-      }
-    } catch (error) {
-      console.error("显示消息失败:", error);
-      // 降级处理
-      alert(message);
-    }
-  }
-
-  showAlert(message) {
-    this.showMessage(message, "info");
+  showAlert(message, type = "info") {
+    // 动态加载 OSD_Message 组件
+    $NG.loadScript(
+      "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Components/Message/V3/OSD_Message.js",
+      () => {
+        try {
+          // 根据消息类型调用不同的方法
+          if (type === "success") {
+            window.OSD_Message.success(message);
+          } else if (type === "error") {
+            window.OSD_Message.error(message, { duration: 10 });
+          } else if (type === "warning") {
+            window.OSD_Message.show({
+              type: "warning",
+              content: message,
+              duration: 5,
+              position: "center-top",
+              showClose: true,
+            });
+          } else {
+            window.OSD_Message.show({
+              type: "info",
+              content: message,
+              duration: 5,
+              position: "center-top",
+              showClose: true,
+            });
+          }
+        } catch (error) {
+          console.error("OSD_Message 调用失败:", error);
+          // 降级使用原生 alert
+          alert(message);
+        }
+      },
+      (error) => {
+        console.error("加载 OSD_Message 失败:", error);
+        // 降级使用原生 alert
+        alert(message);
+      },
+    );
   }
 }
 
