@@ -64,7 +64,7 @@ class ExcelTemplateExporter {
       }
       const script = document.createElement("script");
       script.src =
-        "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Utils/ExcelJS/V1/exceljs.min.js";
+        "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Utils/ExcelJS/ V1/exceljs.min.js";
       script.onload = () => {
         if (typeof ExcelJS !== "undefined") {
           resolve();
