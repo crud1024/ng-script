@@ -1,18 +1,4 @@
 class NewTreeStructureGenerator {
-  /**
-   * 优化的树形结构生成器 - 支持多Sheet导入（一次配置所有Sheet）
-   * @param {Object} options 配置项
-   * @param {string} options.buttonSelector 触发按钮的选择器
-   * @param {string} options.sheetJSUrl SheetJS库地址
-   * @param {Object} options.gridConfigs 多网格配置对象，key为sheet名称匹配关键字，value为网格配置
-   * @param {string} options.dialogTitle 导入对话框标题
-   * @param {boolean} options.defaultTreeMode 默认是否启用树结构模式
-   * @param {string} options.matchRule 字段匹配规则
-   * @param {string} options.matchPriority 匹配优先级
-   * @param {Array} options.levelFieldKeywords 层级字段匹配关键字数组
-   * @param {Function} options.onBeforeImport 导入前事件
-   * @param {Function} options.onAfterImport 导入后事件
-   */
   constructor(options = {}) {
     this.options = {
       buttonSelector: '[originid="u_init_tree"]',
@@ -31,11 +17,12 @@ class NewTreeStructureGenerator {
     };
 
     this.gridConfigs = this.options.gridConfigs;
-    this.sheetConfigs = {}; // 存储每个sheet的配置
-    this.sheetFieldMappings = {}; // 存储每个sheet的字段映射
-    this.sheetLevelConfigs = {}; // 存储每个sheet的层级配置
+    this.sheetConfigs = {};
+    this.sheetFieldMappings = {};
+    this.sheetLevelConfigs = {};
     this.isInitialized = false;
     this.activeTooltip = null;
+    this.currentActiveTab = 0;
 
     this.init();
   }
@@ -69,13 +56,12 @@ class NewTreeStructureGenerator {
       Object.keys(this.gridConfigs).forEach((key) => {
         const config = this.gridConfigs[key];
         if (config && config.columns) {
-          // key 可以是sheet名称匹配关键字，也可以是精确的sheet名称
           this.sheetConfigs[key] = {
             gridId: config.id || config.bindtable || key,
             columns: config.columns,
             isTree: config.isTree !== undefined ? config.isTree : true,
             desTitle: config.desTitle || config.panel?.title || key,
-            matchPattern: config.matchPattern || "fuzzy", // 匹配模式：exact(精确), fuzzy(模糊), contains(包含)
+            matchPattern: config.matchPattern || "fuzzy",
           };
         }
       });
@@ -84,44 +70,22 @@ class NewTreeStructureGenerator {
     }
   }
 
-  /**
-   * 根据sheet名称匹配对应的网格配置
-   */
   getConfigForSheet(sheetName) {
-    // 1. 精确匹配
     if (this.sheetConfigs[sheetName]) {
       return { configKey: sheetName, config: this.sheetConfigs[sheetName] };
     }
 
-    // 2. 模糊匹配
     const lowerSheetName = sheetName.toLowerCase();
     for (const [key, config] of Object.entries(this.sheetConfigs)) {
-      const matchPattern = config.matchPattern || "fuzzy";
       const lowerKey = key.toLowerCase();
-
-      if (matchPattern === "exact") {
-        if (lowerKey === lowerSheetName) {
-          return { configKey: key, config };
-        }
-      } else if (matchPattern === "contains") {
-        if (
-          lowerSheetName.includes(lowerKey) ||
-          lowerKey.includes(lowerSheetName)
-        ) {
-          return { configKey: key, config };
-        }
-      } else {
-        // fuzzy
-        if (
-          lowerSheetName.includes(lowerKey) ||
-          lowerKey.includes(lowerSheetName)
-        ) {
-          return { configKey: key, config };
-        }
+      if (
+        lowerSheetName.includes(lowerKey) ||
+        lowerKey.includes(lowerSheetName)
+      ) {
+        return { configKey: key, config };
       }
     }
 
-    // 3. 使用第一个配置作为默认
     const firstKey = Object.keys(this.sheetConfigs)[0];
     if (firstKey) {
       console.warn(
@@ -133,9 +97,6 @@ class NewTreeStructureGenerator {
     return null;
   }
 
-  /**
-   * 根据配置构建字段映射
-   */
   buildFieldMappingForConfig(columns) {
     const fieldMapping = {};
 
@@ -179,7 +140,6 @@ class NewTreeStructureGenerator {
 
     Object.keys(fieldMapping).forEach((fieldName) => {
       const fieldConfig = fieldMapping[fieldName];
-
       if (
         !fieldConfig.hidden &&
         fieldName !== "s_tree_id" &&
@@ -256,7 +216,6 @@ class NewTreeStructureGenerator {
           }
         }
         break;
-
       case "prefix":
         for (let i = 0; i < headers.length; i++) {
           if (
@@ -277,7 +236,6 @@ class NewTreeStructureGenerator {
           }
         }
         break;
-
       case "suffix":
         for (let i = 0; i < headers.length; i++) {
           if (
@@ -298,7 +256,6 @@ class NewTreeStructureGenerator {
           }
         }
         break;
-
       case "chinese":
         const chinesePrimary = this.extractChinese(primaryMatch).toLowerCase();
         if (chinesePrimary) {
@@ -338,19 +295,15 @@ class NewTreeStructureGenerator {
           }
         }
         break;
-
       case "fuzzy":
       default:
         let bestMatch = null;
         let bestScore = 0;
-
         for (let i = 0; i < headers.length; i++) {
           if (!headers[i]) continue;
-
           const header = String(headers[i]);
           const lowerHeader = header.toLowerCase();
           let score = 0;
-
           if (lowerHeader === primaryMatch.toLowerCase()) {
             score = 100;
           } else if (
@@ -372,7 +325,6 @@ class NewTreeStructureGenerator {
             const secondaryChinese = secondaryMatch
               ? this.extractChinese(secondaryMatch).toLowerCase()
               : "";
-
             if (
               primaryChinese &&
               headerChinese &&
@@ -406,16 +358,13 @@ class NewTreeStructureGenerator {
               }
             }
           }
-
           if (score > bestScore) {
             bestScore = score;
             bestMatch = header;
           }
         }
-
         return bestScore >= 60 ? bestMatch : null;
     }
-
     return null;
   }
 
@@ -427,7 +376,6 @@ class NewTreeStructureGenerator {
   autoMatchFields(mappableFields, headers, fieldMapping) {
     const matches = {};
     const rule = this.options.matchRule;
-
     Object.keys(mappableFields).forEach((fieldName) => {
       const matchedHeader = this.matchFieldWithRule(
         fieldName,
@@ -439,21 +387,16 @@ class NewTreeStructureGenerator {
         matches[fieldName] = matchedHeader;
       }
     });
-
     return matches;
   }
 
   autoMatchLevelField(headers) {
     if (!headers || headers.length === 0) return null;
-
     const keywords = this.options.levelFieldKeywords;
-
     for (let i = 0; i < headers.length; i++) {
       const header = headers[i];
       if (!header) continue;
-
       const headerLower = String(header).toLowerCase();
-
       for (const keyword of keywords) {
         const keywordLower = String(keyword).toLowerCase();
         if (headerLower.includes(keywordLower)) {
@@ -461,7 +404,6 @@ class NewTreeStructureGenerator {
         }
       }
     }
-
     return null;
   }
 
@@ -470,7 +412,6 @@ class NewTreeStructureGenerator {
       callback();
       return;
     }
-
     const script = document.createElement("script");
     script.src = this.options.sheetJSUrl;
     script.onload = callback;
@@ -486,16 +427,13 @@ class NewTreeStructureGenerator {
       console.warn(`未找到选择器为 "${this.options.buttonSelector}" 的按钮`);
       return;
     }
-
     buttons.forEach((button) => {
       const newButton = button.cloneNode(true);
       button.parentNode.replaceChild(newButton, button);
-
       newButton.addEventListener("click", async () => {
         if (!this.isInitialized) {
           await this.initializeGenerator();
         }
-
         this.loadSheetJS(() => {
           this.initTreeProcess();
         });
@@ -509,18 +447,14 @@ class NewTreeStructureGenerator {
     fileInput.accept = ".xls,.xlsx,.csv";
     fileInput.style.display = "none";
     document.body.appendChild(fileInput);
-
     fileInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = (event) => {
         try {
           const data = new Uint8Array(event.target.result);
           const workbook = XLSX.read(data, { type: "array" });
-
-          // 获取所有sheet页信息
           const sheetsInfo = [];
           workbook.SheetNames.forEach((name) => {
             const worksheet = workbook.Sheets[name];
@@ -534,28 +468,22 @@ class NewTreeStructureGenerator {
               });
             }
           });
-
           if (sheetsInfo.length === 0) {
             this.showAlert("Excel文件中没有有效的数据");
             return;
           }
-
           this.showMultiSheetConfigDialog(sheetsInfo);
         } catch (error) {
           console.error("解析 Excel 文件失败:", error);
           this.showAlert("解析 Excel 文件失败: " + error.message);
         }
       };
-
       reader.onerror = () => {
         this.showAlert("读取文件失败");
       };
-
       reader.readAsArrayBuffer(file);
     });
-
     fileInput.click();
-
     setTimeout(() => {
       if (document.body.contains(fileInput)) {
         document.body.removeChild(fileInput);
@@ -563,28 +491,28 @@ class NewTreeStructureGenerator {
     }, 1000);
   }
 
-  /**
-   * 显示多Sheet配置对话框 - 每个Sheet独立配置
-   */
   showMultiSheetConfigDialog(sheetsInfo) {
     const overlay = this.createOverlay();
     const dialog = this.createDialog(this.options.dialogTitle);
 
-    // 创建Tab切换容器
-    const tabContainer = this.createTabContainer(sheetsInfo);
+    // 全局匹配规则配置面板
+    const globalConfigPanel = this.createGlobalConfigPanel();
+    dialog.appendChild(globalConfigPanel);
+
+    // Tab头部
+    const tabHeader = this.createTabHeader(sheetsInfo);
+    dialog.appendChild(tabHeader);
+
+    // Tab内容容器
+    const tabContainer = this.createTabContainer();
     dialog.appendChild(tabContainer);
 
-    // 存储每个sheet的配置面板引用
     const sheetPanels = {};
 
-    // 为每个sheet创建独立的配置面板
     sheetsInfo.forEach((sheet, index) => {
-      const sheetId = `sheet_${index}`;
       const panel = this.createSheetConfigPanel(sheet, index);
-      sheetPanels[sheetId] = panel;
-      tabContainer.content.appendChild(panel);
-
-      // 默认显示第一个sheet
+      sheetPanels[index] = panel;
+      tabContainer.appendChild(panel);
       if (index === 0) {
         panel.style.display = "block";
       } else {
@@ -592,22 +520,23 @@ class NewTreeStructureGenerator {
       }
     });
 
-    // 创建Tab头部
-    const tabHeader = this.createTabHeader(sheetsInfo, (index) => {
-      // 切换Tab的回调
-      Object.keys(sheetPanels).forEach((key, i) => {
-        sheetPanels[key].style.display = i === index ? "block" : "none";
+    // 绑定Tab切换事件
+    const tabs = tabHeader.querySelectorAll(".tab-item");
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => {
+        // 更新tab样式
+        tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        // 切换面板
+        Object.keys(sheetPanels).forEach((key) => {
+          sheetPanels[key].style.display =
+            parseInt(key) === index ? "block" : "none";
+        });
+        this.currentActiveTab = index;
       });
     });
-    dialog.insertBefore(tabHeader, tabContainer);
 
-    // 全局匹配规则和优先级配置
-    const globalConfigPanel = this.createGlobalConfigPanel();
-    dialog.insertBefore(globalConfigPanel, tabHeader);
-
-    // 按钮容器
     const buttonContainer = this.createButtonContainer();
-
     const cancelBtn = this.createButton("取消", "secondary", () => {
       if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
         document.body.removeChild(this.activeTooltip);
@@ -615,21 +544,17 @@ class NewTreeStructureGenerator {
       }
       document.body.removeChild(overlay);
     });
-
     const confirmBtn = this.createButton(
       "确认导入全部",
       "primary",
       async () => {
-        // 收集所有配置
         const allConfigs = [];
         let hasError = false;
 
         for (let i = 0; i < sheetsInfo.length; i++) {
           const sheet = sheetsInfo[i];
-          const sheetId = `sheet_${i}`;
-          const panel = sheetPanels[sheetId];
+          const panel = sheetPanels[i];
 
-          // 收集字段映射
           const fieldMappings = {};
           const mappingSelects = panel.querySelectorAll(
             ".field-mapping-select",
@@ -640,7 +565,6 @@ class NewTreeStructureGenerator {
             const fieldName = select.getAttribute("data-field");
             const isRequired = select.getAttribute("data-required") === "true";
             fieldMappings[fieldName] = select.value;
-
             if (isRequired && (!select.value || select.value === "")) {
               this.showAlert(
                 `Sheet "${sheet.name}" 请配置必填字段"${select.getAttribute("data-label")}"的映射`,
@@ -654,7 +578,6 @@ class NewTreeStructureGenerator {
             break;
           }
 
-          // 获取层级配置
           const treeModeEnabled =
             panel.querySelector(".tree-mode-switch")?.checked || false;
           const levelFieldSelect = panel.querySelector(".level-field-select");
@@ -666,7 +589,6 @@ class NewTreeStructureGenerator {
           if (treeModeEnabled) {
             levelField = levelFieldSelect?.value;
             separator = separatorInput?.value.trim();
-
             if (!levelField || !separator) {
               this.showAlert(
                 `Sheet "${sheet.name}" 启用了层级模式，请填写完整的层级配置信息`,
@@ -676,7 +598,6 @@ class NewTreeStructureGenerator {
             }
           }
 
-          // 获取对应的网格配置
           const configResult = this.getConfigForSheet(sheet.name);
           if (!configResult) {
             this.showAlert(
@@ -712,26 +633,23 @@ class NewTreeStructureGenerator {
 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
-
     this.setupOverlayClose(overlay);
   }
 
-  /**
-   * 创建Tab头部
-   */
-  createTabHeader(sheetsInfo, onTabChange) {
+  createTabHeader(sheetsInfo) {
     const tabHeader = document.createElement("div");
     tabHeader.style.cssText = `
       display: flex;
       gap: 4px;
-      border-bottom: 2px solid #e8e8e8;
-      margin-bottom: 20px;
-      padding: 0 4px;
+      border-bottom: 1px solid #e8e8e8;
+      margin: 0 0 16px 0;
+      padding: 0;
       background: white;
     `;
 
     sheetsInfo.forEach((sheet, index) => {
       const tab = document.createElement("button");
+      tab.className = `tab-item ${index === 0 ? "active" : ""}`;
       tab.textContent = `${sheet.name} (${sheet.totalRows}行)`;
       tab.style.cssText = `
         padding: 10px 20px;
@@ -743,36 +661,21 @@ class NewTreeStructureGenerator {
         font-size: 14px;
         font-weight: 500;
         transition: all 0.2s;
-        margin-right: 4px;
+        margin-right: 2px;
       `;
 
       tab.addEventListener("mouseenter", () => {
-        if (index !== 0 || tab.style.background !== "#1890ff") {
-          tab.style.background = index === 0 ? "#40a9ff" : "#f5f5f5";
+        if (!tab.classList.contains("active")) {
+          tab.style.background = "#f5f5f5";
+          tab.style.color = "#1890ff";
         }
       });
 
       tab.addEventListener("mouseleave", () => {
-        if (index === 0 && tab.style.background === "#40a9ff") {
-          tab.style.background = "#1890ff";
-        } else if (index !== 0 && tab.style.background !== "#1890ff") {
+        if (!tab.classList.contains("active")) {
           tab.style.background = "transparent";
+          tab.style.color = "#666";
         }
-      });
-
-      tab.addEventListener("click", () => {
-        // 重置所有tab样式
-        const allTabs = tabHeader.querySelectorAll("button");
-        allTabs.forEach((t, i) => {
-          if (i === index) {
-            t.style.background = "#1890ff";
-            t.style.color = "white";
-          } else {
-            t.style.background = "transparent";
-            t.style.color = "#666";
-          }
-        });
-        onTabChange(index);
       });
 
       tabHeader.appendChild(tab);
@@ -781,55 +684,26 @@ class NewTreeStructureGenerator {
     return tabHeader;
   }
 
-  /**
-   * 创建Tab内容容器
-   */
-  createTabContainer(sheetsInfo) {
+  createTabContainer() {
     const container = document.createElement("div");
-    container.className = "tab-content-container";
     container.style.cssText = `
-      min-height: 500px;
-      max-height: 60vh;
+      min-height: 400px;
+      max-height: 55vh;
       overflow-y: auto;
       padding: 4px;
     `;
-    container.content = container;
     return container;
   }
 
-  /**
-   * 创建单个Sheet的配置面板
-   */
   createSheetConfigPanel(sheet, index) {
     const panel = document.createElement("div");
-    panel.className = `sheet-config-panel sheet-${index}`;
+    panel.className = `sheet-config-panel`;
     panel.style.cssText = `
-      padding: 8px;
+      padding: 0;
       background: #fff;
       border-radius: 8px;
     `;
 
-    // Sheet标题
-    const sheetTitle = document.createElement("div");
-    sheetTitle.style.cssText = `
-      font-size: 16px;
-      font-weight: 600;
-      color: #1890ff;
-      padding: 8px 12px;
-      background: #e6f7ff;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    `;
-    sheetTitle.innerHTML = `
-      <span>📄 ${sheet.name}</span>
-      <span style="font-size: 12px; color: #666;">数据行数: ${sheet.totalRows}</span>
-    `;
-    panel.appendChild(sheetTitle);
-
-    // 获取对应的网格配置
     const configResult = this.getConfigForSheet(sheet.name);
     const config = configResult?.config;
 
@@ -848,7 +722,6 @@ class NewTreeStructureGenerator {
       return panel;
     }
 
-    // 构建字段映射
     const fieldMapping = this.buildFieldMappingForConfig(config.columns);
     const mappableFields = this.getMappableFields(fieldMapping);
     const headers = sheet.headers;
@@ -859,8 +732,8 @@ class NewTreeStructureGenerator {
     );
     const autoMatchedLevelField = this.autoMatchLevelField(headers);
 
-    // 字段映射配置区域
-    const mappingSection = this.createSheetMappingSection(
+    // 字段映射配置区域 - 保持一行横向滚动
+    const mappingSection = this.createMappingSection(
       headers,
       mappableFields,
       fieldMapping,
@@ -869,7 +742,7 @@ class NewTreeStructureGenerator {
     panel.appendChild(mappingSection);
 
     // 层级配置区域
-    const levelSection = this.createSheetLevelSection(
+    const levelSection = this.createLevelSection(
       headers,
       autoMatchedLevelField,
       config.isTree,
@@ -879,15 +752,7 @@ class NewTreeStructureGenerator {
     return panel;
   }
 
-  /**
-   * 创建Sheet的字段映射区域
-   */
-  createSheetMappingSection(
-    headers,
-    mappableFields,
-    fieldMapping,
-    autoMatches,
-  ) {
+  createMappingSection(headers, mappableFields, fieldMapping, autoMatches) {
     const section = this.createCollapsiblePanel("字段映射配置", true);
     section.style.marginBottom = "16px";
 
@@ -896,14 +761,16 @@ class NewTreeStructureGenerator {
       overflow-x: auto;
       overflow-y: visible;
       padding: 4px 0 8px 0;
+      margin: 0 -4px;
       width: 100%;
     `;
 
     const mappingRow = document.createElement("div");
     mappingRow.style.cssText = `
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 12px;
+      min-width: min-content;
       padding: 0 4px;
     `;
 
@@ -917,11 +784,11 @@ class NewTreeStructureGenerator {
         autoMatches[fieldName],
       );
       fieldContainer.style.flex = "0 0 auto";
-      fieldContainer.style.width = "160px";
+      fieldContainer.style.width = "130px";
+      fieldContainer.style.marginBottom = "0";
       mappingRow.appendChild(fieldContainer);
     });
 
-    // 自动匹配按钮
     const autoMatchBtn = this.createButton("重新自动匹配", "secondary", () => {
       const newAutoMatches = this.autoMatchFields(
         mappableFields,
@@ -947,10 +814,7 @@ class NewTreeStructureGenerator {
     return section;
   }
 
-  /**
-   * 创建Sheet的层级配置区域
-   */
-  createSheetLevelSection(headers, autoMatchedLevelField, isTreeConfig) {
+  createLevelSection(headers, autoMatchedLevelField, isTreeConfig) {
     const section = this.createCollapsiblePanel("层级配置", true);
     section.style.marginBottom = "16px";
 
@@ -962,7 +826,6 @@ class NewTreeStructureGenerator {
       flex-wrap: wrap;
     `;
 
-    // 层级模式开关
     const switchWrapper = document.createElement("div");
     switchWrapper.style.cssText = `
       display: flex;
@@ -974,19 +837,12 @@ class NewTreeStructureGenerator {
       border: 1px solid #e8e8e8;
     `;
 
-    const switchCheckbox = document.createElement("input");
-    switchCheckbox.type = "checkbox";
-    switchCheckbox.className = "tree-mode-switch";
-    switchCheckbox.checked = isTreeConfig && this.options.defaultTreeMode;
-    switchCheckbox.disabled = !isTreeConfig;
-    switchCheckbox.style.cssText = `
-      width: 40px;
-      height: 20px;
-      cursor: ${isTreeConfig ? "pointer" : "not-allowed"};
-    `;
-
+    const antSwitch = this.createAntSwitch(
+      isTreeConfig && this.options.defaultTreeMode,
+    );
     const switchLabel = document.createElement("span");
-    switchLabel.textContent = switchCheckbox.checked ? "层级模式" : "平级模式";
+    switchLabel.textContent =
+      isTreeConfig && this.options.defaultTreeMode ? "层级模式" : "平级模式";
     switchLabel.style.cssText = `
       font-size: 14px;
       color: #333;
@@ -994,27 +850,31 @@ class NewTreeStructureGenerator {
       min-width: 70px;
     `;
 
-    switchWrapper.appendChild(switchCheckbox);
+    if (!isTreeConfig) {
+      antSwitch.style.cursor = "not-allowed";
+      antSwitch.style.opacity = "0.6";
+    }
+
+    switchWrapper.appendChild(antSwitch);
     switchWrapper.appendChild(switchLabel);
     levelRow.appendChild(switchWrapper);
 
-    // 层级字段选择
     const levelFieldContainer = document.createElement("div");
     levelFieldContainer.style.cssText = `
       flex: 1 1 250px;
       min-width: 200px;
     `;
 
-    const levelFieldSelect = this.createSelectSelect(
+    const levelFieldSelect = this.createSelect(
       headers,
       "请选择层级字段",
       autoMatchedLevelField,
     );
     levelFieldSelect.className = "level-field-select";
     levelFieldSelect.style.width = "100%";
-    levelFieldSelect.disabled = !switchCheckbox.checked;
+    levelFieldSelect.disabled = !(isTreeConfig && this.options.defaultTreeMode);
 
-    if (autoMatchedLevelField && switchCheckbox.checked) {
+    if (autoMatchedLevelField && isTreeConfig && this.options.defaultTreeMode) {
       levelFieldSelect.style.borderColor = "#52c41a";
       levelFieldSelect.style.backgroundColor = "#f6ffed";
     }
@@ -1022,49 +882,78 @@ class NewTreeStructureGenerator {
     levelFieldContainer.appendChild(levelFieldSelect);
     levelRow.appendChild(levelFieldContainer);
 
-    // 分隔符输入
     const separatorContainer = document.createElement("div");
     separatorContainer.style.cssText = `
       flex: 1 1 200px;
       min-width: 150px;
     `;
 
-    const separatorInput = this.createInputText(".", "例如: . 或 - 或 /");
+    const separatorInput = this.createInput(".", "例如: . 或 - 或 /");
     separatorInput.className = "separator-input";
     separatorInput.style.width = "100%";
-    separatorInput.disabled = !switchCheckbox.checked;
+    separatorInput.disabled = !(isTreeConfig && this.options.defaultTreeMode);
+
+    separatorInput.addEventListener("mouseenter", () => {
+      if (!separatorInput.disabled) {
+        this.createGlobalTooltip(
+          "层级分隔符，用于分割不同层级的标识，如：. 或 - 或 /",
+          separatorInput,
+        );
+      }
+    });
+
+    separatorInput.addEventListener("mouseleave", () => {
+      if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
+        document.body.removeChild(this.activeTooltip);
+        this.activeTooltip = null;
+      }
+    });
 
     separatorContainer.appendChild(separatorInput);
     levelRow.appendChild(separatorContainer);
 
-    // 开关切换事件
-    switchCheckbox.addEventListener("change", (e) => {
-      const enabled = e.target.checked;
-      switchLabel.textContent = enabled ? "层级模式" : "平级模式";
-      levelFieldSelect.disabled = !enabled;
-      separatorInput.disabled = !enabled;
-
-      levelFieldSelect.style.opacity = enabled ? "1" : "0.5";
-      separatorInput.style.opacity = enabled ? "1" : "0.5";
-      levelFieldSelect.style.cursor = enabled ? "pointer" : "not-allowed";
-      separatorInput.style.cursor = enabled ? "pointer" : "not-allowed";
-
-      if (enabled && autoMatchedLevelField) {
-        levelFieldSelect.style.borderColor = "#52c41a";
-        levelFieldSelect.style.backgroundColor = "#f6ffed";
+    const toggleSwitch = (enabled) => {
+      const canEnable = enabled && isTreeConfig;
+      if (canEnable) {
+        antSwitch.style.backgroundColor = "#1890ff";
+        const handle = antSwitch.querySelector(".new-tree-switch-handle");
+        if (handle) handle.style.transform = "translateX(22px)";
+        switchLabel.textContent = "层级模式";
       } else {
-        levelFieldSelect.style.borderColor = "#d9d9d9";
-        levelFieldSelect.style.backgroundColor = enabled ? "white" : "#f5f5f5";
+        antSwitch.style.backgroundColor = "rgba(0, 0, 0, 0.25)";
+        const handle = antSwitch.querySelector(".new-tree-switch-handle");
+        if (handle) handle.style.transform = "translateX(2px)";
+        switchLabel.textContent = "平级模式";
       }
+      levelFieldSelect.disabled = !canEnable;
+      separatorInput.disabled = !canEnable;
+      levelFieldSelect.style.opacity = canEnable ? "1" : "0.5";
+      separatorInput.style.opacity = canEnable ? "1" : "0.5";
+      levelFieldSelect.style.cursor = canEnable ? "pointer" : "not-allowed";
+      separatorInput.style.cursor = canEnable ? "pointer" : "not-allowed";
+    };
+
+    antSwitch.addEventListener("click", (e) => {
+      if (!isTreeConfig) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showAlert("当前明细表不支持层级模式");
+        return;
+      }
+      e.stopPropagation();
+      e.preventDefault();
+      toggleSwitch(
+        !(
+          levelFieldSelect.disabled === false &&
+          separatorInput.disabled === false
+        ),
+      );
     });
 
     section.content.appendChild(levelRow);
     return section;
   }
 
-  /**
-   * 创建全局配置面板
-   */
   createGlobalConfigPanel() {
     const panel = this.createCollapsiblePanel("全局匹配规则配置", true);
 
@@ -1076,7 +965,6 @@ class NewTreeStructureGenerator {
       flex-wrap: wrap;
     `;
 
-    // 匹配规则选择
     const ruleContainer = document.createElement("div");
     ruleContainer.style.cssText = `
       display: flex;
@@ -1085,6 +973,7 @@ class NewTreeStructureGenerator {
       background: #f5f5f5;
       padding: 8px 16px;
       border-radius: 30px;
+      border: 1px solid #e8e8e8;
     `;
 
     const ruleLabel = document.createElement("span");
@@ -1119,7 +1008,6 @@ class NewTreeStructureGenerator {
       ruleSelect.appendChild(option);
     });
 
-    // 匹配优先级选择
     const priorityContainer = document.createElement("div");
     priorityContainer.style.cssText = `
       display: flex;
@@ -1128,6 +1016,7 @@ class NewTreeStructureGenerator {
       background: #f5f5f5;
       padding: 8px 16px;
       border-radius: 30px;
+      border: 1px solid #e8e8e8;
     `;
 
     const priorityLabel = document.createElement("span");
@@ -1166,26 +1055,6 @@ class NewTreeStructureGenerator {
     ruleRow.appendChild(ruleContainer);
     ruleRow.appendChild(priorityContainer);
 
-    // 全局自动匹配按钮
-    const globalAutoMatchBtn = this.createButton(
-      "为所有Sheet自动匹配字段",
-      "primary",
-      () => {
-        // 触发所有sheet的自动匹配
-        const allSheetPanels = document.querySelectorAll(".sheet-config-panel");
-        allSheetPanels.forEach((panel) => {
-          const autoMatchBtn = panel.querySelector(".auto-match-btn");
-          if (autoMatchBtn) {
-            autoMatchBtn.click();
-          }
-        });
-      },
-    );
-    ruleRow.appendChild(globalAutoMatchBtn);
-
-    panel.content.appendChild(ruleRow);
-
-    // 更新全局规则
     ruleSelect.addEventListener("change", () => {
       this.options.matchRule = ruleSelect.value;
     });
@@ -1194,6 +1063,7 @@ class NewTreeStructureGenerator {
       this.options.matchPriority = prioritySelect.value;
     });
 
+    panel.content.appendChild(ruleRow);
     return panel;
   }
 
@@ -1212,6 +1082,7 @@ class NewTreeStructureGenerator {
       padding: 8px;
       border-radius: 6px;
       border: 1px solid #f0f0f0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.02);
       position: relative;
     `;
 
@@ -1221,13 +1092,13 @@ class NewTreeStructureGenerator {
       margin-bottom: 6px;
       color: ${isRequired ? "#cf1322" : "#333"};
       font-weight: ${isRequired ? "600" : "500"};
-      font-size: 11px;
+      font-size: 12px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     `;
 
-    const select = this.createSelectSelect(headers, "请选择", autoMatchValue);
+    const select = this.createSelect(headers, "请选择", autoMatchValue);
     select.className = "field-mapping-select";
     select.setAttribute("data-field", fieldName);
     select.setAttribute("data-required", isRequired);
@@ -1236,12 +1107,11 @@ class NewTreeStructureGenerator {
     select.style.padding = "6px 8px";
     select.style.fontSize = "12px";
     select.style.borderRadius = "4px";
-    select.style.height = "32px";
+    select.style.height = "30px";
 
     if (autoMatchValue) {
       select.style.borderColor = "#52c41a";
       select.style.backgroundColor = "#f6ffed";
-
       const matchBadge = document.createElement("span");
       matchBadge.textContent = "✓";
       matchBadge.style.cssText = `
@@ -1264,13 +1134,9 @@ class NewTreeStructureGenerator {
 
     container.appendChild(label);
     container.appendChild(select);
-
     return container;
   }
 
-  /**
-   * 处理所有Sheet的导入
-   */
   async processAllSheetsImport(allConfigs, overlay) {
     let successCount = 0;
     let failCount = 0;
@@ -1281,7 +1147,6 @@ class NewTreeStructureGenerator {
         const dataWithHeaders = [config.headers, ...config.rows];
 
         if (config.treeModeEnabled && config.isTree) {
-          // 层级模式导入
           let parsedData = this.generateTreeData(
             dataWithHeaders,
             config.fieldMappings,
@@ -1317,10 +1182,8 @@ class NewTreeStructureGenerator {
               config.gridId,
             );
           }
-
           successCount++;
         } else {
-          // 平级模式导入
           let parsedData = this.generateFlatData(
             dataWithHeaders,
             config.fieldMappings,
@@ -1354,7 +1217,6 @@ class NewTreeStructureGenerator {
               config.gridId,
             );
           }
-
           successCount++;
         }
       } catch (error) {
@@ -1368,7 +1230,6 @@ class NewTreeStructureGenerator {
       document.body.removeChild(this.activeTooltip);
       this.activeTooltip = null;
     }
-
     document.body.removeChild(overlay);
 
     if (failCount > 0) {
@@ -1384,17 +1245,14 @@ class NewTreeStructureGenerator {
     const headers = data[0];
     const rows = data.slice(1);
     const flatData = [];
-
     const fieldIndexes = {};
     Object.keys(fieldMappings).forEach((field) => {
       if (fieldMappings[field]) {
         fieldIndexes[field] = headers.indexOf(fieldMappings[field]);
       }
     });
-
     rows.forEach((row) => {
       const nodeData = {};
-
       Object.keys(fieldIndexes).forEach((field) => {
         const excelIndex = fieldIndexes[field];
         if (
@@ -1412,12 +1270,10 @@ class NewTreeStructureGenerator {
           nodeData[field] = "";
         }
       });
-
       if (Object.keys(nodeData).length > 0) {
         flatData.push(nodeData);
       }
     });
-
     return flatData;
   }
 
@@ -1426,40 +1282,28 @@ class NewTreeStructureGenerator {
     const rows = data.slice(1);
     const treeMap = new Map();
     const treeData = [];
-
     const fieldIndexes = {};
     Object.keys(fieldMappings).forEach((field) => {
       if (fieldMappings[field]) {
         fieldIndexes[field] = headers.indexOf(fieldMappings[field]);
       }
     });
-
     const levelIndex = headers.indexOf(levelField);
     if (levelIndex === -1) throw new Error(`未找到层级字段: ${levelField}`);
-
     rows.forEach((row) => {
       const levelPath = row[levelIndex];
       if (!levelPath && levelPath !== 0) return;
-
       const levelPathStr = String(levelPath).trim();
       if (!levelPathStr) return;
-
       const parts = levelPathStr.split(separator);
       const currentLevel = parts.length;
-
       const treeId = this.new_generateTreeId();
       let treePid = "0";
-
       if (currentLevel > 1) {
         const parentPath = parts.slice(0, -1).join(separator);
         treePid = treeMap.get(parentPath) || "0";
       }
-
-      const nodeData = {
-        s_tree_id: treeId,
-        s_tree_pid: treePid,
-      };
-
+      const nodeData = { s_tree_id: treeId, s_tree_pid: treePid };
       Object.keys(fieldIndexes).forEach((field) => {
         const excelIndex = fieldIndexes[field];
         if (
@@ -1477,24 +1321,19 @@ class NewTreeStructureGenerator {
           nodeData[field] = "";
         }
       });
-
       treeData.push(nodeData);
       treeMap.set(levelPathStr, treeId);
     });
-
     return treeData;
   }
 
   processFieldValue(fieldName, rawValue) {
     const result = {};
-
     if (rawValue === null || rawValue === undefined || rawValue === "") {
       result[fieldName] = "";
       return result;
     }
-
     const stringValue = String(rawValue).trim();
-
     if (stringValue.includes("|") && stringValue.split("|").length === 2) {
       const [value, displayText] = stringValue.split("|");
       result[fieldName] = value.trim();
@@ -1509,132 +1348,22 @@ class NewTreeStructureGenerator {
     } else {
       result[fieldName] = stringValue;
     }
-
     return result;
-  }
-
-  new_generateTreeId() {
-    const user = "sys8";
-    const timestamp = Date.now().toString();
-    const randomStr = this.new_generateRandomString(18);
-    return user + timestamp + randomStr;
-  }
-
-  new_generateRandomString(length) {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < length; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  }
-
-  new_listToTree(list, options = {}) {
-    const {
-      idKey = "s_tree_id",
-      parentKey = "s_tree_pid",
-      childrenKey = "children",
-    } = options;
-
-    const nodeMap = list.reduce((acc, node) => {
-      acc[node[idKey]] = {
-        ...node,
-        [childrenKey]: [],
-      };
-      return acc;
-    }, {});
-
-    return list.reduce((tree, node) => {
-      const currentNode = nodeMap[node[idKey]];
-      const parentId = node[parentKey];
-
-      if (parentId && nodeMap[parentId]) {
-        nodeMap[parentId][childrenKey].push(currentNode);
-      } else {
-        tree.push(currentNode);
-      }
-      return tree;
-    }, []);
-  }
-
-  async importToGrid(data, isTreeMode = true, gridId) {
-    try {
-      const targetGridId = gridId || this.currentGridId;
-      const dgrid = $NG.getCmpApi(targetGridId);
-
-      if (!dgrid) {
-        throw new Error(`未找到明细网格组件: ${targetGridId}`);
-      }
-
-      let importData = data;
-
-      if (isTreeMode) {
-        importData = this.new_listToTree(data);
-      }
-
-      await dgrid.addRows(importData);
-
-      console.log(`导入成功: ${targetGridId}, 数据量: ${importData.length}`);
-    } catch (error) {
-      console.error("导入失败:", error);
-      throw error;
-    }
-  }
-
-  createGlobalTooltip(text, targetElement) {
-    if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
-      document.body.removeChild(this.activeTooltip);
-    }
-
-    const tooltip = document.createElement("div");
-    tooltip.style.cssText = `
-      position: fixed;
-      background: rgba(0, 0, 0, 0.85);
-      color: white;
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.5;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      border: 1px solid rgba(255,255,255,0.1);
-      backdrop-filter: blur(2px);
-      white-space: nowrap;
-      z-index: 10000;
-      pointer-events: none;
-    `;
-
-    tooltip.textContent = text;
-
-    const rect = targetElement.getBoundingClientRect();
-    tooltip.style.left = `${rect.left + rect.width / 2 - 100}px`;
-    tooltip.style.top = `${rect.top - 40}px`;
-
-    document.body.appendChild(tooltip);
-    this.activeTooltip = tooltip;
-
-    setTimeout(() => {
-      if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
-        document.body.removeChild(this.activeTooltip);
-        this.activeTooltip = null;
-      }
-    }, 2000);
-
-    return tooltip;
   }
 
   createCollapsiblePanel(title, expanded = true) {
     const panel = document.createElement("div");
     panel.style.cssText = `
-      margin-bottom: 16px;
+      margin-bottom: 20px;
       border: 1px solid #e8e8e8;
       border-radius: 8px;
       overflow: hidden;
       background: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
     `;
-
     const header = document.createElement("div");
     header.style.cssText = `
-      padding: 10px 16px;
+      padding: 12px 16px;
       background: #fafafa;
       cursor: pointer;
       display: flex;
@@ -1642,27 +1371,33 @@ class NewTreeStructureGenerator {
       gap: 8px;
       user-select: none;
       border-bottom: ${expanded ? "1px solid #e8e8e8" : "none"};
+      transition: background 0.2s;
     `;
-
+    header.addEventListener("mouseenter", () => {
+      header.style.background = "#f0f0f0";
+    });
+    header.addEventListener("mouseleave", () => {
+      header.style.background = "#fafafa";
+    });
     const arrow = document.createElement("span");
-    arrow.innerHTML = expanded ? "▼" : "▶";
+    arrow.innerHTML = expanded ? "●" : "○";
     arrow.style.cssText = `
-      font-size: 12px;
-      color: #666;
+      font-size: 14px;
+      color: #1890ff;
+      display: inline-block;
+      width: 16px;
+      text-align: center;
       transition: transform 0.2s;
     `;
-
     const titleSpan = document.createElement("span");
     titleSpan.textContent = title;
     titleSpan.style.cssText = `
       font-weight: 600;
       color: #333;
-      font-size: 14px;
+      font-size: 15px;
     `;
-
     header.appendChild(arrow);
     header.appendChild(titleSpan);
-
     const content = document.createElement("div");
     content.style.cssText = `
       padding: ${expanded ? "16px" : "0"};
@@ -1670,28 +1405,73 @@ class NewTreeStructureGenerator {
       overflow: hidden;
       transition: padding 0.2s, max-height 0.2s;
     `;
-
     header.addEventListener("click", () => {
       const isNowExpanded =
         content.style.maxHeight !== "0px" && content.style.maxHeight !== "0";
       if (isNowExpanded) {
         content.style.padding = "0";
         content.style.maxHeight = "0";
-        arrow.innerHTML = "▶";
+        arrow.innerHTML = "○";
         header.style.borderBottom = "none";
       } else {
         content.style.padding = "16px";
         content.style.maxHeight = "none";
-        arrow.innerHTML = "▼";
+        arrow.innerHTML = "●";
         header.style.borderBottom = "1px solid #e8e8e8";
       }
     });
-
     panel.appendChild(header);
     panel.appendChild(content);
-
     panel.content = content;
     return panel;
+  }
+
+  createAntSwitch(checked = false) {
+    const switchContainer = document.createElement("div");
+    switchContainer.className = `new-tree-switch ${checked ? "new-tree-switch-checked" : ""}`;
+    switchContainer.style.cssText = `
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 22px;
+      line-height: 22px;
+      border-radius: 22px;
+      background-color: ${checked ? "#1890ff" : "rgba(0, 0, 0, 0.25)"};
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    `;
+    const switchHandle = document.createElement("div");
+    switchHandle.className = "new-tree-switch-handle";
+    switchHandle.style.cssText = `
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 18px;
+      background-color: white;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      transform: ${checked ? "translateX(22px)" : "translateX(2px)"};
+    `;
+    switchContainer.appendChild(switchHandle);
+    switchContainer.addEventListener("mouseenter", () => {
+      if (!checked) {
+        switchContainer.style.backgroundColor = "rgba(0, 0, 0, 0.35)";
+      } else {
+        switchContainer.style.backgroundColor = "#40a9ff";
+      }
+    });
+    switchContainer.addEventListener("mouseleave", () => {
+      if (!checked) {
+        switchContainer.style.backgroundColor = "rgba(0, 0, 0, 0.25)";
+      } else {
+        switchContainer.style.backgroundColor = "#1890ff";
+      }
+    });
+    return switchContainer;
   }
 
   createOverlay() {
@@ -1716,66 +1496,78 @@ class NewTreeStructureGenerator {
     const dialog = document.createElement("div");
     dialog.style.cssText = `
       background: white;
-      padding: 24px;
+      padding: 28px;
       border-radius: 16px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.15);
       z-index: 10000;
-      width: 1100px;
+      width: 950px;
       max-width: 95vw;
       max-height: 85vh;
       overflow-y: auto;
+      border: 1px solid #e6f7ff;
     `;
-
     const titleEl = document.createElement("h3");
     titleEl.textContent = title;
     titleEl.style.cssText = `
-      margin: 0 0 16px 0;
+      margin: 0 0 20px 0;
       color: #1890ff;
-      font-size: 18px;
+      font-size: 20px;
       font-weight: 600;
       text-align: center;
+      letter-spacing: 0.5px;
     `;
     dialog.appendChild(titleEl);
-
     return dialog;
   }
 
-  createSelectSelect(headers, placeholder, selectedValue = null) {
+  createSelect(headers, placeholder, selectedValue = null) {
     const select = document.createElement("select");
     select.style.cssText = `
       padding: 8px 12px;
       border: 1px solid #d9d9d9;
       border-radius: 6px;
-      font-size: 13px;
+      font-size: 14px;
       background: white;
+      transition: all 0.2s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 14px;
       cursor: pointer;
-      height: 36px;
+      height: 38px;
       box-sizing: border-box;
     `;
-
+    select.addEventListener("focus", () => {
+      if (!select.disabled) {
+        select.style.borderColor = "#1890ff";
+        select.style.boxShadow = "0 0 0 2px rgba(24, 144, 255, 0.2)";
+      }
+    });
+    select.addEventListener("blur", () => {
+      select.style.borderColor = "#d9d9d9";
+      select.style.boxShadow = "none";
+    });
     const emptyOption = document.createElement("option");
     emptyOption.value = "";
     emptyOption.textContent = placeholder;
     emptyOption.selected = !selectedValue;
     select.appendChild(emptyOption);
-
     headers.forEach((header) => {
       if (header && header.trim() !== "") {
         const option = document.createElement("option");
         option.value = header;
-        option.textContent =
-          header.length > 30 ? header.substring(0, 30) + "..." : header;
+        option.textContent = header;
         if (selectedValue && header === selectedValue) {
           option.selected = true;
         }
         select.appendChild(option);
       }
     });
-
     return select;
   }
 
-  createInputText(value = "", placeholder = "") {
+  createInput(value = "", placeholder = "") {
     const input = document.createElement("input");
     input.type = "text";
     input.placeholder = placeholder;
@@ -1786,10 +1578,66 @@ class NewTreeStructureGenerator {
       box-sizing: border-box;
       border: 1px solid #d9d9d9;
       border-radius: 6px;
-      font-size: 13px;
-      height: 36px;
+      font-size: 14px;
+      transition: all 0.2s;
+      height: 38px;
     `;
+    input.addEventListener("focus", () => {
+      if (!input.disabled) {
+        input.style.borderColor = "#1890ff";
+        input.style.boxShadow = "0 0 0 2px rgba(24, 144, 255, 0.2)";
+      }
+    });
+    input.addEventListener("blur", () => {
+      input.style.borderColor = "#d9d9d9";
+      input.style.boxShadow = "none";
+    });
     return input;
+  }
+
+  createGlobalTooltip(text, targetElement) {
+    if (this.activeTooltip && document.body.contains(this.activeTooltip)) {
+      document.body.removeChild(this.activeTooltip);
+    }
+    const tooltip = document.createElement("div");
+    tooltip.style.cssText = `
+      position: fixed;
+      background: rgba(0, 0, 0, 0.85);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(2px);
+      white-space: nowrap;
+      letter-spacing: 0.3px;
+      z-index: 10000;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    `;
+    tooltip.textContent = text;
+    const arrow = document.createElement("div");
+    arrow.style.cssText = `
+      position: absolute;
+      bottom: -4px;
+      left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+      width: 8px;
+      height: 8px;
+      background: rgba(0, 0, 0, 0.85);
+      border-right: 1px solid rgba(255,255,255,0.1);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    `;
+    tooltip.appendChild(arrow);
+    const rect = targetElement.getBoundingClientRect();
+    const tooltipRect = { width: 200, height: 60 };
+    tooltip.style.left = `${rect.left + rect.width / 2 - tooltipRect.width / 2}px`;
+    tooltip.style.top = `${rect.top - tooltipRect.height - 10}px`;
+    document.body.appendChild(tooltip);
+    this.activeTooltip = tooltip;
+    return tooltip;
   }
 
   createButtonContainer() {
@@ -1798,7 +1646,7 @@ class NewTreeStructureGenerator {
       display: flex;
       justify-content: flex-end;
       gap: 12px;
-      margin-top: 20px;
+      margin-top: 24px;
       padding-top: 16px;
       border-top: 1px solid #f0f0f0;
     `;
@@ -1808,7 +1656,6 @@ class NewTreeStructureGenerator {
   createButton(text, type = "primary", onClick) {
     const button = document.createElement("button");
     button.textContent = text;
-
     const baseStyles = `
       padding: 8px 20px;
       border-radius: 6px;
@@ -1817,22 +1664,24 @@ class NewTreeStructureGenerator {
       transition: all 0.2s;
       border: none;
       font-weight: 500;
-      height: 36px;
-      min-width: 100px;
+      height: 38px;
+      min-width: 80px;
     `;
-
     if (type === "primary") {
       button.style.cssText =
         baseStyles +
         `
         background: #1890ff;
         color: white;
+        box-shadow: 0 2px 6px rgba(24,144,255,0.3);
       `;
-      button.addEventListener("mouseenter", () => {
+      button.addEventListener("mouseover", () => {
         button.style.background = "#40a9ff";
+        button.style.boxShadow = "0 4px 10px rgba(24,144,255,0.4)";
       });
-      button.addEventListener("mouseleave", () => {
+      button.addEventListener("mouseout", () => {
         button.style.background = "#1890ff";
+        button.style.boxShadow = "0 2px 6px rgba(24,144,255,0.3)";
       });
     } else {
       button.style.cssText =
@@ -1842,16 +1691,17 @@ class NewTreeStructureGenerator {
         background: white;
         color: #666;
       `;
-      button.addEventListener("mouseenter", () => {
+      button.addEventListener("mouseover", () => {
         button.style.borderColor = "#1890ff";
         button.style.color = "#1890ff";
+        button.style.background = "#f5f5f5";
       });
-      button.addEventListener("mouseleave", () => {
+      button.addEventListener("mouseout", () => {
         button.style.borderColor = "#d9d9d9";
         button.style.color = "#666";
+        button.style.background = "white";
       });
     }
-
     button.onclick = onClick;
     return button;
   }
@@ -1866,6 +1716,65 @@ class NewTreeStructureGenerator {
         document.body.removeChild(overlay);
       }
     });
+  }
+
+  new_generateTreeId() {
+    const user = "sys8";
+    const timestamp = Date.now().toString();
+    const randomStr = this.new_generateRandomString(18);
+    return user + timestamp + randomStr;
+  }
+
+  new_generateRandomString(length) {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let result = "";
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  new_listToTree(list, options = {}) {
+    const {
+      idKey = "s_tree_id",
+      parentKey = "s_tree_pid",
+      childrenKey = "children",
+    } = options;
+    const nodeMap = list.reduce((acc, node) => {
+      acc[node[idKey]] = { ...node, [childrenKey]: [] };
+      return acc;
+    }, {});
+    return list.reduce((tree, node) => {
+      const currentNode = nodeMap[node[idKey]];
+      const parentId = node[parentKey];
+      if (parentId && nodeMap[parentId]) {
+        nodeMap[parentId][childrenKey].push(currentNode);
+      } else {
+        tree.push(currentNode);
+      }
+      return tree;
+    }, []);
+  }
+
+  async importToGrid(data, isTreeMode = true, gridId) {
+    try {
+      const targetGridId = gridId || this.options.gridId;
+      const dgrid = $NG.getCmpApi(targetGridId);
+      if (!dgrid) {
+        throw new Error(`未找到明细网格组件: ${targetGridId}`);
+      }
+      let importData = data;
+      if (isTreeMode) {
+        importData = this.new_listToTree(data);
+      }
+      await dgrid.addRows(importData);
+      this.showAlert(
+        `导入成功！${isTreeMode ? "(层级模式)" : "(平级模式)"} - ${targetGridId}`,
+      );
+    } catch (error) {
+      console.error("导入失败:", error);
+      throw error;
+    }
   }
 
   showAlert(message) {
