@@ -1,0 +1,708 @@
+// ==================== Excel 导出类 ====================
+
+class ExcelExporter {
+  constructor(options = {}) {
+    this.fileName = options.fileName || "AI测算导出";
+    this.mode = options.mode || "leafSpan";
+
+    this.headerStyle = {
+      backgroundColor: options.headerStyle?.backgroundColor || "FFE0E0E0",
+      fontColor: options.headerStyle?.fontColor || "FF000000",
+      fontSize: options.headerStyle?.fontSize || 11,
+      bold: options.headerStyle?.bold !== false,
+      ...options.headerStyle,
+    };
+
+    this.bodyStyle = {
+      backgroundColor: options.bodyStyle?.backgroundColor || "FFFFFFFF",
+      fontColor: options.bodyStyle?.fontColor || "FF000000",
+      fontSize: options.bodyStyle?.fontSize || 10,
+      alternateRowColor: options.bodyStyle?.alternateRowColor || false,
+      alternateBackgroundColor:
+        options.bodyStyle?.alternateBackgroundColor || "FFF5F5F5",
+      ...options.bodyStyle,
+    };
+
+    this.borderStyle = {
+      color: options.borderStyle?.color || "FF000000",
+      style: options.borderStyle?.style || "thin",
+      ...options.borderStyle,
+    };
+
+    this.columnConfig = {
+      minWidth: options.columnConfig?.minWidth || 8,
+      maxWidth: options.columnConfig?.maxWidth || 50,
+      defaultWidth: options.columnConfig?.defaultWidth || 12,
+      ...options.columnConfig,
+    };
+
+    this.logTypeColorMap = {
+      1: "FFB3DAFF",
+      2: "FFFFF0B3",
+      3: "FFD9FFCC",
+    };
+
+    this.markCellColor = "FFFF4D4F";
+    this.ExcelJS = null;
+    this.workbook = null;
+    this.blacklist = ["s_tree_pid", "s_tree_id", "phid_pc"];
+  }
+
+  async init() {
+    return new Promise((resolve, reject) => {
+      if (typeof window.ExcelJS !== "undefined") {
+        this.ExcelJS = window.ExcelJS;
+        this.workbook = new this.ExcelJS.Workbook();
+        this.workbook.creator = "AI测算系统";
+        this.workbook.lastModifiedBy =
+          ($NG.getUserInfo && $NG.getUserInfo()?.name) || "system";
+        this.workbook.created = new Date();
+        resolve();
+        return;
+      }
+
+      $NG.loadScript(
+        "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Utils/ExcelJS/V1/exceljs.min.js",
+        () => {
+          this.ExcelJS = window.ExcelJS;
+          this.workbook = new this.ExcelJS.Workbook();
+          this.workbook.creator = "AI测算系统";
+          this.workbook.lastModifiedBy =
+            ($NG.getUserInfo && $NG.getUserInfo()?.name) || "system";
+          this.workbook.created = new Date();
+          resolve();
+        },
+        reject,
+      );
+    });
+  }
+
+  // ==================== 数据扁平化工具函数 ====================
+
+  flattenTreeData(treeData, childrenKey = "children", parentContext = {}) {
+    if (!Array.isArray(treeData)) return [];
+    const result = [];
+
+    for (const node of treeData) {
+      const flatNode = { ...node };
+      for (const [key, value] of Object.entries(parentContext)) {
+        if (flatNode[key] === undefined || flatNode[key] === null) {
+          flatNode[key] = value;
+        }
+      }
+      if (parentContext.myLevel) {
+        flatNode.myLevel = parentContext.myLevel + 1;
+      } else if (flatNode.myLevel === undefined) {
+        flatNode.myLevel = 1;
+      }
+      const children = flatNode[childrenKey];
+      delete flatNode[childrenKey];
+      result.push(flatNode);
+      if (children && Array.isArray(children) && children.length > 0) {
+        const childContext = { ...parentContext };
+        childContext.parent_name = flatNode.s_tree_name;
+        childContext.parent_id = flatNode.s_tree_id;
+        childContext.myLevel = flatNode.myLevel;
+        const childResults = this.flattenTreeData(
+          children,
+          childrenKey,
+          childContext,
+        );
+        result.push(...childResults);
+      }
+    }
+    return result;
+  }
+
+  flattenTreeDataByParentId(flatData) {
+    if (!Array.isArray(flatData)) return flatData;
+    const result = [];
+    for (const item of flatData) {
+      const node = { ...item };
+      if (node.s_tree_no) {
+        node.myLevel = (node.s_tree_no.match(/\./g) || []).length + 1;
+      } else if (
+        node.s_tree_pid === "0" ||
+        node.s_tree_pid === 0 ||
+        node.s_tree_pid === null
+      ) {
+        node.myLevel = 1;
+      } else {
+        node.myLevel = 2;
+      }
+      result.push(node);
+    }
+    result.sort((a, b) => {
+      const levelA = a.myLevel || 0;
+      const levelB = b.myLevel || 0;
+      if (levelA !== levelB) return levelA - levelB;
+      return (a.s_tree_no || "").localeCompare(b.s_tree_no || "");
+    });
+    return result;
+  }
+
+  smartFlattenData(data) {
+    if (!data) return [];
+    if (!Array.isArray(data)) {
+      console.warn("smartFlattenData: 输入不是数组", data);
+      return [];
+    }
+    if (data.length === 0) return [];
+
+    // 检查是否有 children 字段（树形结构）
+    const hasChildrenField = data.some(
+      (item) =>
+        item && item.children !== undefined && Array.isArray(item.children),
+    );
+    // 检查是否有树形ID字段
+    const hasTreeIdField = data.some(
+      (item) =>
+        item &&
+        ((item.s_tree_id !== undefined && item.s_tree_pid !== undefined) ||
+          item.s_tree_no !== undefined),
+    );
+
+    if (hasChildrenField) {
+      console.log("检测到 children 字段，执行树形数据扁平化");
+      const flattened = this.flattenTreeData(data, "children");
+      console.log(`扁平化: ${data.length} 行 -> ${flattened.length} 行`);
+      return flattened;
+    }
+    if (hasTreeIdField) {
+      console.log("检测到 s_tree_id/s_tree_pid 字段，执行层级数据处理");
+      const processed = this.flattenTreeDataByParentId(data);
+      console.log(`处理: ${data.length} 行 -> ${processed.length} 行`);
+      return processed;
+    }
+    console.log("未检测到树形结构，使用原始数据");
+    return data;
+  }
+
+  filterColumns(columns) {
+    if (!columns || !Array.isArray(columns)) return [];
+    return columns.reduce((acc, col) => {
+      if (col.hidden === true) return acc;
+      if (col.dataIndex && !col.columns) {
+        if (this.blacklist.includes(col.dataIndex)) return acc;
+        acc.push({ ...col });
+        return acc;
+      }
+      if (col.columns && Array.isArray(col.columns)) {
+        const filteredChildren = this.filterColumns(col.columns);
+        if (filteredChildren.length === 0) return acc;
+        acc.push({ ...col, columns: filteredChildren });
+      }
+      return acc;
+    }, []);
+  }
+
+  countLeaves(node) {
+    if (!node.columns || node.columns.length === 0) return 1;
+    return node.columns.reduce(
+      (sum, child) => sum + this.countLeaves(child),
+      0,
+    );
+  }
+
+  computeNodeDepth(node) {
+    if (!node.columns || node.columns.length === 0) {
+      node.depth = 1;
+      return 1;
+    }
+    let maxChildDepth = 0;
+    for (const child of node.columns) {
+      maxChildDepth = Math.max(maxChildDepth, this.computeNodeDepth(child));
+    }
+    node.depth = maxChildDepth + 1;
+    return node.depth;
+  }
+
+  getNodeTitle(node) {
+    return node.header || node.title || node.langKey || node.name || "";
+  }
+
+  buildHeaderMatrix(tree) {
+    if (!tree || tree.length === 0) return [];
+    if (this.mode === "standard") {
+      for (const root of tree) {
+        this.computeNodeDepth(root);
+      }
+    }
+    const maxDepth = Math.max(
+      ...tree.map((root) => {
+        if (this.mode === "standard") return root.depth;
+        return (function getMaxDepth(node) {
+          if (!node.columns || node.columns.length === 0) return 1;
+          return 1 + Math.max(...node.columns.map(getMaxDepth));
+        })(root);
+      }),
+    );
+    const totalCols = tree.reduce(
+      (sum, node) => sum + this.countLeaves(node),
+      0,
+    );
+    const matrix = Array(maxDepth)
+      .fill()
+      .map(() => Array(totalCols).fill(null));
+    let startCol = 0;
+    const fillNode = (node, row, col) => {
+      const colspan = this.countLeaves(node);
+      const hasChildren = node.columns && node.columns.length > 0;
+      let rowspan;
+      if (this.mode === "standard") {
+        rowspan = node.depth;
+      } else {
+        if (hasChildren) {
+          rowspan = 1;
+        } else {
+          rowspan = maxDepth - row;
+        }
+      }
+      const title = this.getNodeTitle(node);
+      matrix[row][col] = { value: title, rowspan: rowspan, colspan: colspan };
+      if (hasChildren) {
+        let childCol = col;
+        for (const child of node.columns) {
+          fillNode(child, row + 1, childCol);
+          childCol += this.countLeaves(child);
+        }
+      }
+    };
+    for (const root of tree) {
+      fillNode(root, 0, startCol);
+      startCol += this.countLeaves(root);
+    }
+    return matrix;
+  }
+
+  flattenLeaves(tree, result = []) {
+    for (const node of tree) {
+      if (node.columns && node.columns.length) {
+        this.flattenLeaves(node.columns, result);
+      } else if (node.dataIndex) {
+        result.push({
+          dataIndex: node.dataIndex,
+          header: this.getNodeTitle(node),
+          width: node.width || this.columnConfig.defaultWidth,
+        });
+      }
+    }
+    return result;
+  }
+
+  getBorder() {
+    return {
+      top: {
+        style: this.borderStyle.style,
+        color: { argb: this.borderStyle.color },
+      },
+      left: {
+        style: this.borderStyle.style,
+        color: { argb: this.borderStyle.color },
+      },
+      bottom: {
+        style: this.borderStyle.style,
+        color: { argb: this.borderStyle.color },
+      },
+      right: {
+        style: this.borderStyle.style,
+        color: { argb: this.borderStyle.color },
+      },
+    };
+  }
+
+  getHeaderCellStyle() {
+    return {
+      font: {
+        bold: this.headerStyle.bold,
+        size: this.headerStyle.fontSize,
+        color: { argb: this.headerStyle.fontColor },
+      },
+      alignment: { horizontal: "center", vertical: "middle", wrapText: true },
+      fill: {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: this.headerStyle.backgroundColor },
+      },
+      border: this.getBorder(),
+    };
+  }
+
+  getBodyCellStyle(rowIndex, rowData = null, fieldName = null) {
+    let backgroundColor = this.bodyStyle.backgroundColor;
+    if (
+      rowData &&
+      rowData.u_log_type !== undefined &&
+      rowData.u_log_type !== null
+    ) {
+      const logType = rowData.u_log_type;
+      if (this.logTypeColorMap[logType]) {
+        backgroundColor = this.logTypeColorMap[logType];
+      }
+    }
+    if (
+      backgroundColor === this.bodyStyle.backgroundColor &&
+      this.bodyStyle.alternateRowColor &&
+      rowIndex % 2 === 1
+    ) {
+      backgroundColor = this.bodyStyle.alternateBackgroundColor;
+    }
+    let fontColor = this.bodyStyle.fontColor;
+    if (rowData && fieldName) {
+      const marks = rowData.marks || rowData.Marks || [];
+      if (Array.isArray(marks) && marks.includes(fieldName)) {
+        fontColor = this.markCellColor;
+      }
+    }
+    return {
+      font: { size: this.bodyStyle.fontSize, color: { argb: fontColor } },
+      alignment: { vertical: "middle" },
+      fill: {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: backgroundColor },
+      },
+      border: this.getBorder(),
+    };
+  }
+
+  autoFitColumns(worksheet, leaves, rowsData, headerMatrix) {
+    const columnCount = leaves.length;
+    const columnContents = Array(columnCount)
+      .fill()
+      .map(() => []);
+    for (let i = 0; i < headerMatrix.length; i++) {
+      const row = headerMatrix[i];
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        if (cell && cell.value) {
+          const colspan = cell.colspan || 1;
+          for (let k = 0; k < colspan; k++) {
+            if (j + k < columnCount) {
+              columnContents[j + k].push(cell.value);
+            }
+          }
+        }
+      }
+    }
+    for (const row of rowsData) {
+      if (!row) continue;
+      for (let idx = 0; idx < leaves.length; idx++) {
+        const leaf = leaves[idx];
+        let value = row[leaf.dataIndex];
+        if (value !== undefined && value !== null) {
+          if (typeof value === "number") {
+            if (Math.abs(value) < 0.01 && value !== 0) {
+              value = value.toFixed(4);
+            } else if (Number.isInteger(value)) {
+              value = value;
+            } else {
+              value = value.toFixed(2);
+            }
+          }
+          columnContents[idx].push(value.toString());
+        }
+      }
+    }
+    for (let idx = 0; idx < columnCount; idx++) {
+      let maxLength = 0;
+      const configWidth = leaves[idx].width;
+      if (configWidth && typeof configWidth === "number") {
+        maxLength = Math.max(maxLength, configWidth);
+      }
+      for (const content of columnContents[idx]) {
+        if (content) {
+          let contentLength = 0;
+          for (let i = 0; i < content.length; i++) {
+            const charCode = content.charCodeAt(i);
+            if (
+              (charCode >= 0x4e00 && charCode <= 0x9fff) ||
+              (charCode >= 0x3400 && charCode <= 0x4dbf) ||
+              (charCode >= 0xf900 && charCode <= 0xfaff) ||
+              (charCode >= 0x20000 && charCode <= 0x2ffff)
+            ) {
+              contentLength += 2;
+            } else {
+              contentLength += 1;
+            }
+          }
+          maxLength = Math.max(maxLength, contentLength);
+        }
+      }
+      let columnWidth = Math.min(
+        Math.max(maxLength + 2, this.columnConfig.minWidth),
+        this.columnConfig.maxWidth,
+      );
+      if (configWidth && configWidth > columnWidth) {
+        columnWidth = Math.min(configWidth, this.columnConfig.maxWidth);
+      }
+      const column = worksheet.getColumn(idx + 1);
+      column.width = columnWidth;
+    }
+  }
+
+  createWorksheet(sheetName, filteredTree, rowsData) {
+    // 确保 rowsData 是数组
+    const dataArray = Array.isArray(rowsData) ? rowsData : [];
+
+    // 重要：直接使用原始数据，不再进行扁平化处理（因为 getRows 返回的已经是扁平数组）
+    console.log(`${sheetName} 原始数据行数: ${dataArray.length}`);
+
+    if (dataArray.length > 0) {
+      console.log(`${sheetName} 数据示例第一行:`, dataArray[0]);
+    }
+
+    const headerMatrix = this.buildHeaderMatrix(filteredTree);
+    const leaves = this.flattenLeaves(filteredTree);
+    console.log(`${sheetName} 叶子列数量: ${leaves.length}`);
+
+    const worksheet = this.workbook.addWorksheet(sheetName, {
+      views: [{ showGridLines: true }],
+    });
+    worksheet.properties.defaultRowHeight = 20;
+
+    // 创建表头
+    for (let i = 0; i < headerMatrix.length; i++) {
+      const rowCells = headerMatrix[i];
+      const excelRow = worksheet.addRow([]);
+      excelRow.height = 25;
+      for (let j = 0; j < rowCells.length; j++) {
+        const cellInfo = rowCells[j];
+        const cell = excelRow.getCell(j + 1);
+        cell.value = cellInfo?.value || "";
+        if (cellInfo) {
+          Object.assign(cell, this.getHeaderCellStyle());
+        }
+      }
+    }
+
+    // 合并单元格
+    const mergeList = [];
+    for (let i = 0; i < headerMatrix.length; i++) {
+      const rowCells = headerMatrix[i];
+      for (let j = 0; j < rowCells.length; j++) {
+        const cellInfo = rowCells[j];
+        if (cellInfo && (cellInfo.rowspan > 1 || cellInfo.colspan > 1)) {
+          mergeList.push({
+            startRow: i + 1,
+            endRow: i + cellInfo.rowspan,
+            startCol: j + 1,
+            endCol: j + cellInfo.colspan,
+          });
+        }
+      }
+    }
+    for (const merge of mergeList) {
+      try {
+        worksheet.mergeCells(
+          merge.startRow,
+          merge.startCol,
+          merge.endRow,
+          merge.endCol,
+        );
+      } catch (e) {
+        console.warn(
+          `合并失败: ${merge.startRow},${merge.startCol} -> ${merge.endRow},${merge.endCol}`,
+          e.message,
+        );
+      }
+    }
+
+    // 填充数据行 - 直接使用原始数据，不做额外处理
+    for (let rowIndex = 0; rowIndex < dataArray.length; rowIndex++) {
+      const row = dataArray[rowIndex];
+      if (!row) continue;
+
+      const dataRow = worksheet.addRow([]);
+      dataRow.height = 20;
+
+      for (let idx = 0; idx < leaves.length; idx++) {
+        const leaf = leaves[idx];
+        let value = row[leaf.dataIndex];
+
+        if (typeof value === "number") {
+          if (Math.abs(value) < 0.01 && value !== 0) {
+            value = value.toFixed(4);
+          } else if (Number.isInteger(value)) {
+            value = value;
+          } else {
+            value = value.toFixed(2);
+          }
+        } else if (value === undefined || value === null) {
+          value = "";
+        }
+
+        const cell = dataRow.getCell(idx + 1);
+        cell.value = value;
+        const alignment = { vertical: "middle" };
+        alignment.horizontal = typeof value === "number" ? "right" : "left";
+        const bodyStyle = this.getBodyCellStyle(rowIndex, row, leaf.dataIndex);
+        bodyStyle.alignment = { ...bodyStyle.alignment, ...alignment };
+        Object.assign(cell, bodyStyle);
+      }
+    }
+
+    this.autoFitColumns(worksheet, leaves, dataArray, headerMatrix);
+    return worksheet;
+  }
+
+  // d0 表默认列配置
+  getDefaultD0Columns() {
+    return [
+      { header: "序号", dataIndex: "sort_num", width: 8 },
+      { header: "工程或费用名称", dataIndex: "s_tree_name", width: 35 },
+      {
+        header: "建筑工程费(ks)",
+        dataIndex: "construction_cost_ks",
+        width: 18,
+      },
+      { header: "设备购置费(ks)", dataIndex: "equipment_cost_ks", width: 18 },
+      {
+        header: "安装工程费(ks)",
+        dataIndex: "installation_cost_ks",
+        width: 18,
+      },
+      { header: "其他费用(ks)", dataIndex: "other_cost_wan", width: 18 },
+      { header: "合计(ks)", dataIndex: "total_amount_wan", width: 18 },
+      { header: "经济指标(ks/t)", dataIndex: "economic_tech_ratio", width: 15 },
+    ];
+  }
+
+  async export(designData, resultData, customFileName = null) {
+    console.log("=== 开始导出 Excel ===");
+    console.log("resultData keys:", Object.keys(resultData));
+    console.log("d0 数据:", resultData["inv_xmdx_budget_d0"]);
+
+    try {
+      await this.init();
+
+      // 获取配置数据
+      const configData = designData.data || designData;
+      const busTableChnMap = configData.publicProperty?.busTableChnMap || {};
+      console.log("表名映射:", busTableChnMap);
+
+      // 设置文件名
+      let fileName = customFileName || this.fileName;
+      if (!fileName.endsWith(".xlsx")) {
+        fileName += ".xlsx";
+      }
+      console.log("导出文件名:", fileName);
+
+      // 获取所有明细表
+      const allDetailTables = Object.keys(busTableChnMap)
+        .filter((key) => key.match(/_d\d+$/))
+        .sort((a, b) => {
+          const numA = parseInt(a.match(/\d+$/)[0], 10);
+          const numB = parseInt(b.match(/\d+$/)[0], 10);
+          return numA - numB;
+        });
+
+      console.log("明细表列表:", allDetailTables);
+
+      if (allDetailTables.length === 0) {
+        throw new Error("未找到明细表配置");
+      }
+
+      // 分离 d0 和其他表
+      const d0Key = allDetailTables.find((key) => key.endsWith("_d0"));
+      const otherTables = allDetailTables.filter((key) => !key.endsWith("_d0"));
+
+      // ========== 处理 d0 表 ==========
+      if (d0Key) {
+        const sheetName = busTableChnMap[d0Key] || "工程总估算(定案)";
+        let d0Data = resultData[d0Key] || [];
+
+        console.log(`\n=== 处理 d0 表: ${d0Key}，Sheet名称: ${sheetName} ===`);
+        console.log(`d0 数据行数: ${d0Data.length}`);
+
+        // 获取列配置
+        let filteredTree = null;
+        const d0GridConfig = configData.uiContent?.grid?.[d0Key];
+
+        if (
+          d0GridConfig &&
+          d0GridConfig.columns &&
+          d0GridConfig.columns.length > 0
+        ) {
+          const rawColumns = d0GridConfig.columns;
+          filteredTree = this.filterColumns(rawColumns);
+          console.log(`使用 d0 自己的列配置，共 ${filteredTree.length} 列`);
+        } else {
+          console.log(`未找到 d0 列配置，使用默认配置`);
+          const defaultColumns = this.getDefaultD0Columns();
+          filteredTree = this.filterColumns(defaultColumns);
+          console.log(`使用默认列配置，共 ${filteredTree.length} 列`);
+        }
+
+        if (filteredTree && filteredTree.length > 0) {
+          this.createWorksheet(sheetName, filteredTree, d0Data);
+          console.log(`d0 Sheet 创建完成: ${sheetName}`);
+        } else {
+          console.warn(`d0 无有效列配置，跳过`);
+        }
+      }
+
+      // ========== 处理其他明细表 ==========
+      for (const tableKey of otherTables) {
+        const sheetName = busTableChnMap[tableKey] || tableKey;
+        const gridConfig = configData.uiContent?.grid?.[tableKey];
+
+        console.log(`\n=== 处理表 ${tableKey}，Sheet名称: ${sheetName} ===`);
+
+        if (!gridConfig) {
+          console.warn(`未找到表格配置: ${tableKey}`);
+          continue;
+        }
+
+        const rawColumns = gridConfig.columns || [];
+        const filteredTree = this.filterColumns(rawColumns);
+
+        if (filteredTree.length === 0) {
+          console.warn(`${tableKey} 无有效列，跳过`);
+          continue;
+        }
+
+        let rowsData = resultData[tableKey] || [];
+        console.log(`${tableKey} 数据行数: ${rowsData.length}`);
+
+        this.createWorksheet(sheetName, filteredTree, rowsData);
+        console.log(`${tableKey} Sheet 创建完成`);
+      }
+
+      // 导出文件
+      console.log("正在生成 Excel 文件...");
+      const buffer = await this.workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      console.log("Excel 导出完成:", fileName);
+      return { success: true, fileName, message: "导出成功" };
+    } catch (error) {
+      console.error("导出失败:", error);
+      throw error;
+    }
+  }
+
+  static async quickExport(designData, resultData, options = {}) {
+    const exporter = new ExcelExporter(options);
+    try {
+      await exporter.export(designData, resultData, options.fileName);
+    } catch (error) {
+      console.error("导出失败:", error);
+      throw error;
+    }
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.ExcelExporter = ExcelExporter;
+}
