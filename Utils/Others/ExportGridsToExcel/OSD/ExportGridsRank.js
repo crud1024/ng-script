@@ -35,12 +35,12 @@ class ExcelExporter {
    * @param {string} options.markCellConfig.alternateFieldName 备选字段名，默认 'Marks'
    * @param {string} options.markCellConfig.markColor 标记颜色，默认 'FFFF4D4F'（红色）
    *
-   * ========== 新增排序配置 ==========
-   * @param {Object} options.sortConfig 排序配置（参考 ListToLayer）
-   * @param {boolean} options.sortConfig.enableSort 是否启用列排序，默认 true
-   * @param {string} options.sortConfig.idKey 节点 ID 键名，默认 'dataIndex'
-   * @param {string} options.sortConfig.parentKey 父节点 ID 键名，默认 'parentId'
-   * @param {Array} options.sortConfig.sortRules 自定义排序规则，格式 [{ key: 'order', order: 'asc' }]
+   * ========== 新增排序配置项 ==========
+   * @param {Object} options.sortConfig 排序配置
+   * @param {boolean} options.sortConfig.enabled 是否启用排序，默认 true（当检测到排序字段时自动启用）
+   * @param {string} options.sortConfig.idField ID字段名，默认 's_tree_id'
+   * @param {string} options.sortConfig.pidField 父ID字段名，默认 's_tree_pid'
+   * @param {string} options.sortConfig.sortField 排序字段名，默认 's_tree_no'
    */
   constructor(options = {}) {
     // 文件名配置
@@ -102,139 +102,20 @@ class ExcelExporter {
       markColor: options.markCellConfig?.markColor || "FFFF4D4F", // 默认红色
     };
 
-    // ========== 排序配置（参考 ListToLayer） ==========
+    // ========== 排序配置 ==========
     this.sortConfig = {
-      enableSort: options.sortConfig?.enableSort !== false,
-      idKey: options.sortConfig?.idKey || "dataIndex",
-      parentKey: options.sortConfig?.parentKey || "parentId",
-      sortRules: options.sortConfig?.sortRules || null,
+      enabled: options.sortConfig?.enabled !== false, // 默认启用
+      idField: options.sortConfig?.idField || "s_tree_id",
+      pidField: options.sortConfig?.pidField || "s_tree_pid",
+      sortField: options.sortConfig?.sortField || "s_tree_no",
     };
 
     // ExcelJS 实例
     this.ExcelJS = null;
     this.workbook = null;
 
-    // 黑名单字段
+    // 黑名单字段（这些字段在导出的列中会被过滤掉，但保留在数据中用于排序）
     this.blacklist = ["s_tree_pid", "s_tree_id", "phid_pc"];
-  }
-
-  /**
-   * 判断是否为根节点（参考 ListToLayer）
-   * @param {*} parentId - 父节点ID
-   * @returns {boolean}
-   */
-  isRootNode(parentId) {
-    return (
-      parentId === null ||
-      parentId === undefined ||
-      parentId === 0 ||
-      parentId === "0"
-    );
-  }
-
-  /**
-   * 默认排序函数：先按 parentKey 分组，再按 idKey 排序（参考 ListToLayer）
-   * @param {Array} nodes - 需要排序的节点数组
-   * @returns {Array} 排序后的数组
-   */
-  defaultSort(nodes) {
-    const { idKey, parentKey } = this.sortConfig;
-
-    const sorted = [...nodes].sort((a, b) => {
-      const aParent = a[parentKey];
-      const bParent = b[parentKey];
-
-      // 判断是否为根节点
-      const aIsRoot = this.isRootNode(aParent);
-      const bIsRoot = this.isRootNode(bParent);
-
-      // 如果一个是根节点一个不是，根节点排在前面
-      if (aIsRoot && !bIsRoot) return -1;
-      if (!aIsRoot && bIsRoot) return 1;
-
-      // 如果都是根节点或都不是根节点，按 parentKey 排序
-      if (aParent !== bParent) {
-        // 处理 null/0 的情况
-        const aVal = aIsRoot ? 0 : aParent;
-        const bVal = bIsRoot ? 0 : bParent;
-        if (typeof aVal === "string" && typeof bVal === "string") {
-          return aVal.localeCompare(bVal);
-        }
-        return aVal - bVal;
-      }
-
-      // parentKey 相同的情况下，按 idKey 排序
-      const aId = a[idKey];
-      const bId = b[idKey];
-      if (typeof aId === "string" && typeof bId === "string") {
-        return aId.localeCompare(bId);
-      }
-      return aId - bId;
-    });
-
-    return sorted;
-  }
-
-  /**
-   * 使用自定义排序规则排序（参考 ListToLayer）
-   * @param {Array} nodes - 需要排序的节点数组
-   * @returns {Array} 排序后的数组
-   */
-  customSort(nodes) {
-    const { sortRules } = this.sortConfig;
-
-    if (!sortRules || !Array.isArray(sortRules)) {
-      return this.defaultSort(nodes);
-    }
-
-    return [...nodes].sort((a, b) => {
-      for (const rule of sortRules) {
-        const { key, order = "asc" } = rule;
-        const aVal = a[key];
-        const bVal = b[key];
-
-        // 处理 null/undefined 值
-        if (aVal == null && bVal == null) continue;
-        if (aVal == null) return order === "asc" ? -1 : 1;
-        if (bVal == null) return order === "asc" ? 1 : -1;
-
-        // 比较值
-        let compareResult = 0;
-        if (typeof aVal === "string" && typeof bVal === "string") {
-          compareResult = aVal.localeCompare(bVal);
-        } else {
-          compareResult = aVal - bVal;
-        }
-
-        if (compareResult !== 0) {
-          return order === "asc" ? compareResult : -compareResult;
-        }
-      }
-      return 0;
-    });
-  }
-
-  /**
-   * 对列树进行递归排序（参考 ListToLayer 的 sortTree 方法）
-   * @param {Array} tree - 列树结构数组
-   * @returns {Array} 排序后的列树结构
-   */
-  sortColumnTree(tree) {
-    if (!this.sortConfig.enableSort) return tree;
-
-    // 先对当前层排序
-    const sortedTree = this.sortConfig.sortRules
-      ? this.customSort(tree)
-      : this.defaultSort(tree);
-
-    // 递归排序子节点
-    sortedTree.forEach((node) => {
-      if (node.columns && node.columns.length > 0) {
-        node.columns = this.sortColumnTree(node.columns);
-      }
-    });
-
-    return sortedTree;
   }
 
   /**
@@ -266,6 +147,413 @@ class ExcelExporter {
       );
     });
   }
+
+  // ==================== 排序工具方法（静态） ====================
+
+  /**
+   * 中文数字映射表
+   */
+  static CHINESE_NUM_MAP = {
+    零: 0,
+    一: 1,
+    二: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    十: 10,
+    壹: 1,
+    贰: 2,
+    叁: 3,
+    肆: 4,
+    伍: 5,
+    陆: 6,
+    柒: 7,
+    捌: 8,
+    玖: 9,
+    拾: 10,
+    〇: 0,
+  };
+
+  /**
+   * 中文单位映射
+   */
+  static CHINESE_UNIT_MAP = {
+    十: 10,
+    百: 100,
+    千: 1000,
+    万: 10000,
+    亿: 100000000,
+  };
+
+  /**
+   * 将中文数字转换为阿拉伯数字
+   * @param {string} chineseNum 中文数字字符串
+   * @returns {number|null} 转换后的数字，失败返回 null
+   */
+  static chineseToNumber(chineseNum) {
+    if (!chineseNum || typeof chineseNum !== "string") return null;
+
+    const trimmed = chineseNum.trim();
+    if (trimmed === "") return null;
+
+    // 处理纯数字字符串（如 "123"）
+    if (/^\d+$/.test(trimmed)) {
+      return parseInt(trimmed, 10);
+    }
+
+    // 处理中文数字
+    let result = 0;
+    let currentNum = 0;
+    let hasChineseChar = false;
+
+    for (let i = 0; i < trimmed.length; i++) {
+      const char = trimmed[i];
+
+      if (ExcelExporter.CHINESE_NUM_MAP.hasOwnProperty(char)) {
+        hasChineseChar = true;
+        currentNum = ExcelExporter.CHINESE_NUM_MAP[char];
+      } else if (ExcelExporter.CHINESE_UNIT_MAP.hasOwnProperty(char)) {
+        hasChineseChar = true;
+        const unit = ExcelExporter.CHINESE_UNIT_MAP[char];
+        if (currentNum === 0) {
+          currentNum = 1;
+        }
+        // 处理特殊情况：十一 => 11, 二十 => 20
+        if (unit >= 10) {
+          if (result === 0) {
+            result = currentNum * unit;
+          } else {
+            result += currentNum * unit;
+          }
+          currentNum = 0;
+        }
+      } else {
+        // 非中文字符，可能是混合字符串
+        if (hasChineseChar) {
+          // 如果已经处理了中文，遇到非中文就结束
+          break;
+        }
+      }
+    }
+
+    result += currentNum;
+
+    return hasChineseChar ? result : null;
+  }
+
+  /**
+   * 解析排序键中的单个段
+   * @param {string} segment 段字符串
+   * @returns {Object} 解析结果 { type: 'number'|'string', value: number|string }
+   */
+  static parseSegment(segment) {
+    if (!segment || segment === "") {
+      return { type: "number", value: 0 };
+    }
+
+    // 去除前后空格
+    const trimmed = segment.trim();
+
+    // 尝试作为纯数字解析
+    if (/^\d+$/.test(trimmed)) {
+      // 处理前导零：01, 001 等
+      const numValue = parseInt(trimmed, 10);
+      return { type: "number", value: numValue };
+    }
+
+    // 尝试作为中文数字解析
+    const chineseResult = ExcelExporter.chineseToNumber(trimmed);
+    if (chineseResult !== null) {
+      return { type: "number", value: chineseResult };
+    }
+
+    // 否则作为字符串处理
+    return { type: "string", value: trimmed };
+  }
+
+  /**
+   * 解析 s_tree_no 为可排序的数组
+   * 支持格式：1, 2, 3 | 1.1, 1.2 | 1-1, 1-2 | 一、二、十 | 01, 02 | 01.02.03
+   * @param {string|number} treeNo 排序编号
+   * @returns {Array} 排序键数组，每个元素为 { type, value }
+   */
+  static parseTreeNo(treeNo) {
+    if (treeNo === null || treeNo === undefined) return [];
+
+    const str = String(treeNo).trim();
+    if (str === "") return [];
+
+    // 尝试多种分隔符拆分
+    let segments = [];
+
+    // 按点号分割 (1.1.1)
+    if (str.includes(".")) {
+      segments = str.split(".");
+    }
+    // 按短横线分割 (1-1-1)
+    else if (str.includes("-")) {
+      segments = str.split("-");
+    }
+    // 按顿号分割（中文数字常用：一、二、三）
+    else if (str.includes("、")) {
+      segments = str.split("、");
+    }
+    // 按斜杠分割
+    else if (str.includes("/")) {
+      segments = str.split("/");
+    }
+    // 单个值
+    else {
+      segments = [str];
+    }
+
+    // 解析每个段
+    return segments.map((seg) => ExcelExporter.parseSegment(seg));
+  }
+
+  /**
+   * 比较两个排序键
+   * @param {Array} keyA 排序键A
+   * @param {Array} keyB 排序键B
+   * @returns {number} -1, 0, 1
+   */
+  static compareSortKeys(keyA, keyB) {
+    const maxLen = Math.max(keyA.length, keyB.length);
+
+    for (let i = 0; i < maxLen; i++) {
+      // 如果某个键段不存在，视为 0（短的排在前面）
+      if (i >= keyA.length) return -1;
+      if (i >= keyB.length) return 1;
+
+      const segA = keyA[i];
+      const segB = keyB[i];
+
+      // 类型不同时，数字优先于字符串
+      if (segA.type !== segB.type) {
+        return segA.type === "number" ? -1 : 1;
+      }
+
+      // 同类型比较
+      if (segA.type === "number") {
+        if (segA.value !== segB.value) {
+          return segA.value - segB.value;
+        }
+      } else {
+        // 字符串比较
+        const cmp = segA.value.localeCompare(segB.value, "zh-CN");
+        if (cmp !== 0) return cmp;
+      }
+    }
+
+    return 0;
+  }
+
+  /**
+   * 构建树形结构并排序
+   * @param {Array} data 原始数据数组
+   * @param {string} idField ID字段名
+   * @param {string} pidField 父ID字段名
+   * @param {string} sortField 排序字段名
+   * @returns {Array} 排序后的扁平数组（保持树形顺序）
+   */
+  static sortTreeData(data, idField, pidField, sortField) {
+    if (!Array.isArray(data) || data.length === 0) return data;
+
+    // 创建副本避免修改原数组
+    const dataCopy = [...data];
+
+    // 构建节点映射
+    const nodeMap = new Map();
+
+    // 预处理：为每个节点计算排序键
+    for (const item of dataCopy) {
+      const id = item[idField];
+      const pid = item[pidField];
+      const sortValue = item[sortField];
+
+      // 计算排序键
+      const sortKey = ExcelExporter.parseTreeNo(sortValue);
+
+      nodeMap.set(id, {
+        data: item,
+        id: id,
+        pid: pid,
+        sortKey: sortKey,
+        children: [],
+      });
+    }
+
+    // 构建树结构
+    const roots = [];
+    const orphanNodes = []; // 父节点不存在的节点
+
+    for (const [id, node] of nodeMap) {
+      const pid = node.pid;
+
+      // 判断是否为根节点：pid 为 null, undefined, 0, '0', 空字符串
+      if (
+        pid === null ||
+        pid === undefined ||
+        pid === 0 ||
+        pid === "0" ||
+        pid === ""
+      ) {
+        roots.push(node);
+      } else {
+        const parent = nodeMap.get(pid);
+        if (parent) {
+          parent.children.push(node);
+        } else {
+          // 父节点不存在，作为孤立节点处理
+          orphanNodes.push(node);
+          console.warn(
+            `[排序] 节点 ${id} 的父节点 ${pid} 不存在，将作为根节点处理`,
+          );
+        }
+      }
+    }
+
+    // 如果所有节点都有不存在的父节点，则全部作为根节点
+    if (roots.length === 0 && orphanNodes.length > 0) {
+      roots.push(...orphanNodes);
+    } else if (orphanNodes.length > 0) {
+      // 将孤立节点追加到根节点后面
+      roots.push(...orphanNodes);
+    }
+
+    /**
+     * 递归排序节点及其子节点
+     * @param {Array} nodes 节点数组
+     */
+    const sortNodes = (nodes) => {
+      // 先排序当前层
+      nodes.sort((a, b) => ExcelExporter.compareSortKeys(a.sortKey, b.sortKey));
+
+      // 递归排序子节点
+      for (const node of nodes) {
+        if (node.children.length > 0) {
+          sortNodes(node.children);
+        }
+      }
+    };
+
+    // 对根节点排序（会递归排序所有层级）
+    sortNodes(roots);
+
+    // 展平树结构为数组（深度优先）
+    const flattenTree = (nodes, result = []) => {
+      for (const node of nodes) {
+        result.push(node.data);
+        if (node.children.length > 0) {
+          flattenTree(node.children, result);
+        }
+      }
+      return result;
+    };
+
+    return flattenTree(roots);
+  }
+
+  /**
+   * 对数据进行排序（实例方法，使用实例配置）
+   * @param {Array} rowsData 数据行
+   * @returns {Array} 排序后的数据
+   */
+  _sortData(rowsData) {
+    // 检查是否启用排序
+    if (!this.sortConfig.enabled) {
+      console.log("[排序] 排序已禁用，保持原始数据顺序");
+      return rowsData;
+    }
+
+    if (!Array.isArray(rowsData) || rowsData.length === 0) {
+      return rowsData;
+    }
+
+    // 检查数据是否包含排序所需字段
+    const firstRow = rowsData[0];
+    const hasPidField = firstRow.hasOwnProperty(this.sortConfig.pidField);
+    const hasSortField = firstRow.hasOwnProperty(this.sortConfig.sortField);
+    const hasIdField = firstRow.hasOwnProperty(this.sortConfig.idField);
+
+    if (!hasPidField && !hasSortField) {
+      console.log(
+        `[排序] 数据中未找到排序字段 (${this.sortConfig.pidField}, ${this.sortConfig.sortField})，跳过排序`,
+      );
+      return rowsData;
+    }
+
+    console.log(
+      `[排序] 开始树形排序，数据行数: ${rowsData.length}, ` +
+        `ID字段: ${this.sortConfig.idField}, ` +
+        `父ID字段: ${this.sortConfig.pidField}, ` +
+        `排序字段: ${this.sortConfig.sortField}`,
+    );
+
+    // 如果没有 id 字段，使用简单排序
+    if (!hasIdField) {
+      console.log("[排序] 未找到ID字段，使用简单排序");
+      return this._simpleSort(rowsData);
+    }
+
+    // 使用树形排序
+    const sorted = ExcelExporter.sortTreeData(
+      rowsData,
+      this.sortConfig.idField,
+      this.sortConfig.pidField,
+      this.sortConfig.sortField,
+    );
+
+    // 打印排序结果摘要
+    if (sorted.length > 0) {
+      console.log(
+        `[排序] 排序完成，前5条记录:`,
+        sorted.slice(0, 5).map((row) => ({
+          [this.sortConfig.idField]: row[this.sortConfig.idField],
+          [this.sortConfig.pidField]: row[this.sortConfig.pidField],
+          [this.sortConfig.sortField]: row[this.sortConfig.sortField],
+        })),
+      );
+    }
+
+    return sorted;
+  }
+
+  /**
+   * 简单排序（不构建树结构，仅按 s_tree_no 排序）
+   * @param {Array} rowsData 数据行
+   * @returns {Array} 排序后的数据
+   */
+  _simpleSort(rowsData) {
+    const dataCopy = [...rowsData];
+    const sortField = this.sortConfig.sortField;
+    const pidField = this.sortConfig.pidField;
+
+    dataCopy.sort((a, b) => {
+      // 判断是否为根节点
+      const aPid = a[pidField];
+      const bPid = b[pidField];
+      const aIsRoot = !aPid || aPid === 0 || aPid === "0" || aPid === "";
+      const bIsRoot = !bPid || bPid === 0 || bPid === "0" || bPid === "";
+
+      // 先按是否为根节点排序（根节点优先）
+      if (aIsRoot && !bIsRoot) return -1;
+      if (!aIsRoot && bIsRoot) return 1;
+
+      // 同级按sortKey排序
+      const keyA = ExcelExporter.parseTreeNo(a[sortField]);
+      const keyB = ExcelExporter.parseTreeNo(b[sortField]);
+      return ExcelExporter.compareSortKeys(keyA, keyB);
+    });
+
+    return dataCopy;
+  }
+
+  // ==================== 原有方法 ====================
 
   /**
    * 递归过滤列配置（剔除隐藏列和指定字段）
@@ -752,17 +1040,17 @@ class ExcelExporter {
    * 创建工作表
    * @param {string} sheetName 工作表名称
    * @param {Array} filteredTree 过滤后的列树
-   * @param {Array} rowsData 数据行
+   * @param {Array} rowsData 数据行（原始数据，内部会进行排序）
    * @returns {Worksheet} Excel工作表
    */
   createWorksheet(sheetName, filteredTree, rowsData) {
-    // 对列树进行排序（应用 ListToLayer 的排序规则）
-    const sortedTree = this.sortColumnTree(filteredTree);
+    // ========== 数据排序（新增） ==========
+    const sortedData = this._sortData(rowsData);
 
     // 构建表头矩阵
-    const headerMatrix = this.buildHeaderMatrix(sortedTree);
+    const headerMatrix = this.buildHeaderMatrix(filteredTree);
     // 获取叶子列
-    const leaves = this.flattenLeaves(sortedTree);
+    const leaves = this.flattenLeaves(filteredTree);
 
     console.log(`${sheetName} 叶子列数量: ${leaves.length}`);
     leaves.forEach((leaf, idx) => {
@@ -833,9 +1121,9 @@ class ExcelExporter {
       }
     }
 
-    // 写入数据行
-    for (let rowIndex = 0; rowIndex < rowsData.length; rowIndex++) {
-      const row = rowsData[rowIndex];
+    // 写入数据行（使用排序后的数据）
+    for (let rowIndex = 0; rowIndex < sortedData.length; rowIndex++) {
+      const row = sortedData[rowIndex];
       const dataRow = worksheet.addRow([]);
       dataRow.height = 20;
 
@@ -873,8 +1161,8 @@ class ExcelExporter {
       }
     }
 
-    // 智能自适应列宽
-    this.autoFitColumns(worksheet, leaves, rowsData, headerMatrix);
+    // 智能自适应列宽（使用排序后的数据）
+    this.autoFitColumns(worksheet, leaves, sortedData, headerMatrix);
 
     return worksheet;
   }
@@ -884,9 +1172,36 @@ class ExcelExporter {
    * @param {Object} designData 设计数据
    * @param {Object} resultData 结果数据
    * @param {string} customFileName 自定义文件名（可选，覆盖构造函数中的文件名）
+   * @param {Object} sortOptions 排序选项（可选，覆盖构造函数中的排序配置）
+   * @param {boolean} sortOptions.enabled 是否启用排序
+   * @param {string} sortOptions.idField ID字段名
+   * @param {string} sortOptions.pidField 父ID字段名
+   * @param {string} sortOptions.sortField 排序字段名
    */
-  async export(designData, resultData, customFileName = null) {
+  async export(
+    designData,
+    resultData,
+    customFileName = null,
+    sortOptions = null,
+  ) {
     console.log("开始导出 Excel...", { mode: this.mode });
+
+    // ========== 如果传入了 sortOptions，临时覆盖排序配置 ==========
+    if (sortOptions) {
+      if (sortOptions.enabled !== undefined) {
+        this.sortConfig.enabled = sortOptions.enabled;
+      }
+      if (sortOptions.idField) {
+        this.sortConfig.idField = sortOptions.idField;
+      }
+      if (sortOptions.pidField) {
+        this.sortConfig.pidField = sortOptions.pidField;
+      }
+      if (sortOptions.sortField) {
+        this.sortConfig.sortField = sortOptions.sortField;
+      }
+      console.log("[排序] 使用传入的排序配置:", this.sortConfig);
+    }
 
     try {
       // 初始化
@@ -959,7 +1274,7 @@ class ExcelExporter {
 
         // 获取表格数据
         const rowsData = resultData[tableKey] || [];
-        console.log(`${tableKey} 数据行数: ${rowsData.length}`);
+        console.log(`${tableKey} 数据行数: ${rowsData.length} (排序前)`);
 
         // ========== 打印包含样式标记的行数据，用于调试 ==========
         const bgFieldName = this.rowBackgroundConfig.fieldName;
@@ -978,7 +1293,7 @@ class ExcelExporter {
           `${tableKey} 包含样式标记的行数: ${styledRowsCount} (背景字段: ${bgFieldName}, 标记字段: ${markFieldName})`,
         );
 
-        // 创建工作表（内部会应用排序）
+        // 创建工作表（内部会自动排序）
         this.createWorksheet(sheetName, filteredTree, rowsData);
 
         console.log(`${tableKey} Sheet 创建完成`);
@@ -1029,38 +1344,54 @@ if (typeof window !== "undefined") {
 
 // ==================== 使用示例 ====================
 
-// 方式1: 默认配置（不启用排序）
+// 方式1: 使用默认配置（自动排序）
 // const exporter = new ExcelExporter();
 // await exporter.export(designData, resultData);
 
-// 方式2: 使用默认排序规则（按 parentKey 分组，再按 dataIndex 排序）
+// 方式2: 禁用排序
+// const exporter = new ExcelExporter({
+//     sortConfig: { enabled: false }
+// });
+// await exporter.export(designData, resultData);
+
+// 方式3: 自定义排序字段名
 // const exporter = new ExcelExporter({
 //     sortConfig: {
-//         enableSort: true,
-//         idKey: 'dataIndex',
-//         parentKey: 'parentId'
+//         idField: 'my_id',
+//         pidField: 'parent_id',
+//         sortField: 'sort_order'
 //     }
 // });
 // await exporter.export(designData, resultData);
 
-// 方式3: 使用自定义排序规则
-// const exporter = new ExcelExporter({
-//     sortConfig: {
-//         enableSort: true,
-//         idKey: 'dataIndex',
-//         parentKey: 'parentId',
-//         sortRules: [
-//             { key: 'order', order: 'asc' },      // 先按 order 字段升序
-//             { key: 'dataIndex', order: 'asc' }   // 再按 dataIndex 升序
-//         ]
-//     }
+// 方式4: 在 export 时动态指定排序配置
+// const exporter = new ExcelExporter();
+// await exporter.export(designData, resultData, null, {
+//     enabled: true,
+//     sortField: 'custom_sort_field'
 // });
-// await exporter.export(designData, resultData);
 
-// 方式4: 禁用排序
+// 方式5: 完整配置示例
 // const exporter = new ExcelExporter({
+//     fileName: '我的测算报表',
+//     mode: 'leafSpan',
 //     sortConfig: {
-//         enableSort: false
+//         enabled: true,          // 启用排序
+//         idField: 's_tree_id',   // ID字段
+//         pidField: 's_tree_pid', // 父ID字段
+//         sortField: 's_tree_no'  // 排序编号字段
+//     },
+//     rowBackgroundConfig: {
+//         fieldName: 'log_type',
+//         colorMap: {
+//             1: 'FFFFF0B3',
+//             2: 'FFB3DAFF',
+//             3: 'FFD9FFCC'
+//         }
+//     },
+//     markCellConfig: {
+//         fieldName: 'marks',
+//         markColor: 'FFFF4D4F'
 //     }
 // });
 // await exporter.export(designData, resultData);
