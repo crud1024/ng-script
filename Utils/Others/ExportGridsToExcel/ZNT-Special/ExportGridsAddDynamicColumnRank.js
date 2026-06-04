@@ -86,9 +86,6 @@ class ExcelExporter {
       "desc",
       "projectName",
     ];
-
-    // 项目名称映射（从横向对比数据中获取）
-    this.projectNameMap = new Map();
   }
 
   /**
@@ -294,7 +291,6 @@ class ExcelExporter {
   static sortTreeData(data, idField, pidField, sortField) {
     if (!Array.isArray(data) || data.length === 0) return data;
 
-    // 检查是否存在排序字段且所有记录都有该字段
     const hasSortField = data.some(
       (item) =>
         item.hasOwnProperty(sortField) &&
@@ -361,14 +357,11 @@ class ExcelExporter {
 
     const sortNodes = (nodes) => {
       nodes.sort((a, b) => {
-        // 如果两个都有排序键，进行比较
         if (a.sortKey.length > 0 && b.sortKey.length > 0) {
           return ExcelExporter.compareSortKeys(a.sortKey, b.sortKey);
         }
-        // 如果只有一个有排序键，有排序键的排在前面
         if (a.sortKey.length > 0) return -1;
         if (b.sortKey.length > 0) return 1;
-        // 都没有排序键，保持原顺序
         return 0;
       });
       for (const node of nodes) {
@@ -406,12 +399,10 @@ class ExcelExporter {
       return rowsData;
     }
 
-    // 检查数据中是否有排序字段
     const firstRow = rowsData[0];
     const hasSortField =
       firstRow && firstRow.hasOwnProperty(this.sortConfig.sortField);
 
-    // 如果没有排序字段，直接返回原始数据
     if (!hasSortField) {
       console.log(
         `[排序] 数据中未找到排序字段 "${this.sortConfig.sortField}"，使用默认顺序`,
@@ -419,7 +410,6 @@ class ExcelExporter {
       return rowsData;
     }
 
-    // 检查排序字段是否有有效值
     const hasValidSortValue = rowsData.some((row) => {
       const val = row[this.sortConfig.sortField];
       return val !== undefined && val !== null && val !== "";
@@ -451,17 +441,6 @@ class ExcelExporter {
       this.sortConfig.sortField,
     );
 
-    if (sorted.length > 0) {
-      console.log(
-        `[排序] 排序完成，前3条记录:`,
-        sorted.slice(0, 3).map((row) => ({
-          [this.sortConfig.idField]: row[this.sortConfig.idField],
-          [this.sortConfig.pidField]: row[this.sortConfig.pidField],
-          [this.sortConfig.sortField]: row[this.sortConfig.sortField],
-        })),
-      );
-    }
-
     return sorted;
   }
 
@@ -473,7 +452,6 @@ class ExcelExporter {
     const sortField = this.sortConfig.sortField;
     const pidField = this.sortConfig.pidField;
 
-    // 检查是否有排序字段的有效值
     const hasValidSortValue = dataCopy.some((row) => {
       const val = row[sortField];
       return val !== undefined && val !== null && val !== "";
@@ -628,14 +606,6 @@ class ExcelExporter {
     for (const root of tree) {
       fillNode(root, 0, startCol);
       startCol += this.countLeaves(root);
-    }
-
-    console.log(`表头矩阵 (mode=${this.mode}):`);
-    for (let i = 0; i < matrix.length; i++) {
-      const rowStr = matrix[i]
-        .map((cell) => (cell ? cell.value : ""))
-        .join("\t");
-      console.log(`行${i + 1}: ${rowStr}`);
     }
 
     return matrix;
@@ -927,37 +897,139 @@ class ExcelExporter {
 
   /**
    * 提取分组项目的名称映射（从横向对比数据中）
+   * 注意：静态列已经占用了第一个项目（索引0），
+   * 所以动态列后缀 -1 对应数组索引1，后缀 -2 对应数组索引2，以此类推
    */
   extractGroupNamesFromHorizontalData(resultData) {
     const groupNames = new Map();
 
-    // 尝试从 inv_horizontal_d5 中获取项目名称
-    const horizontalData = resultData?.inv_horizontal_d5;
+    console.log("========== 开始提取项目名称 ==========");
 
-    if (horizontalData && Array.isArray(horizontalData)) {
-      console.log(`找到横向对比数据，共 ${horizontalData.length} 条记录`);
+    // 获取横向对比数据 - 尝试多种路径
+    let horizontalData = null;
 
-      horizontalData.forEach((item, index) => {
-        const groupNum = index + 1; // 从1开始编号
-        const fileName = item.fileName || item.u_file_name || `项目${groupNum}`;
-        // 提取文件名（去掉路径和扩展名）
-        let projectName = fileName;
-        if (fileName.includes("/")) {
-          projectName = fileName.split("/").pop();
+    // 方式1: 直接在 resultData 中
+    if (
+      resultData?.inv_horizontal_d5 &&
+      Array.isArray(resultData.inv_horizontal_d5)
+    ) {
+      horizontalData = resultData.inv_horizontal_d5;
+      console.log("方式1成功: resultData.inv_horizontal_d5");
+    }
+    // 方式2: 在 resultData.data 中
+    else if (
+      resultData?.data?.inv_horizontal_d5 &&
+      Array.isArray(resultData.data.inv_horizontal_d5)
+    ) {
+      horizontalData = resultData.data.inv_horizontal_d5;
+      console.log("方式2成功: resultData.data.inv_horizontal_d5");
+    }
+    // 方式3: 在 resultData.data.uiContent.grid 中（你的数据路径）
+    else if (
+      resultData?.data?.uiContent?.grid?.inv_horizontal_d5 &&
+      Array.isArray(resultData.data.uiContent.grid.inv_horizontal_d5)
+    ) {
+      horizontalData = resultData.data.uiContent.grid.inv_horizontal_d5;
+      console.log(
+        "方式3成功: resultData.data.uiContent.grid.inv_horizontal_d5",
+      );
+    }
+    // 方式4: 在 resultData.uiContent.grid 中
+    else if (
+      resultData?.uiContent?.grid?.inv_horizontal_d5 &&
+      Array.isArray(resultData.uiContent.grid.inv_horizontal_d5)
+    ) {
+      horizontalData = resultData.uiContent.grid.inv_horizontal_d5;
+      console.log("方式4成功: resultData.uiContent.grid.inv_horizontal_d5");
+    }
+    // 方式5: 遍历查找
+    else if (resultData && typeof resultData === "object") {
+      const findHorizontalData = (obj, depth = 0) => {
+        if (depth > 3) return null;
+        if (!obj || typeof obj !== "object") return null;
+
+        for (const key in obj) {
+          if (key === "inv_horizontal_d5" && Array.isArray(obj[key])) {
+            return obj[key];
+          }
+          if (obj[key] && typeof obj[key] === "object") {
+            const found = findHorizontalData(obj[key], depth + 1);
+            if (found) return found;
+          }
         }
-        if (projectName.includes("\\")) {
-          projectName = fileName.split("\\").pop();
-        }
-        if (projectName.endsWith(".xlsx") || projectName.endsWith(".xls")) {
-          projectName = projectName.substring(0, projectName.lastIndexOf("."));
-        }
-        groupNames.set(groupNum, projectName);
-        console.log(`项目${groupNum} 名称: ${projectName} (原始: ${fileName})`);
-      });
-    } else {
-      console.warn("未找到 inv_horizontal_d5 数据，将使用默认项目名称");
+        return null;
+      };
+      horizontalData = findHorizontalData(resultData);
+      if (horizontalData) {
+        console.log("方式5成功: 递归查找到 inv_horizontal_d5");
+      }
     }
 
+    if (horizontalData && horizontalData.length > 1) {
+      console.log(`找到横向对比数据，共 ${horizontalData.length} 条记录`);
+      console.log(
+        `静态列已使用索引0: "${
+          horizontalData[0]?.u_file_name || horizontalData[0]?.fileName
+        }"`,
+      );
+
+      // 关键修改：从索引1开始，对应动态列后缀 1, 2, 3...
+      // 后缀-1 对应数组索引1（第二个项目）
+      // 后缀-2 对应数组索引2（第三个项目）
+      // 后缀-3 对应数组索引3（第四个项目）
+      for (let i = 1; i < horizontalData.length; i++) {
+        const groupNum = i; // 动态列后缀编号：1, 2, 3...
+        const item = horizontalData[i];
+        // 使用 u_file_name 字段
+        let fileName = item.u_file_name || item.fileName;
+
+        if (fileName) {
+          // 提取文件名（去掉路径和扩展名）
+          let projectName = fileName;
+          if (fileName.includes("/")) {
+            projectName = fileName.split("/").pop();
+          }
+          if (projectName.includes("\\")) {
+            projectName = projectName.split("\\").pop();
+          }
+          if (projectName.endsWith(".xlsx")) {
+            projectName = projectName.substring(
+              0,
+              projectName.lastIndexOf(".xlsx"),
+            );
+          } else if (projectName.endsWith(".xls")) {
+            projectName = projectName.substring(
+              0,
+              projectName.lastIndexOf(".xls"),
+            );
+          }
+
+          groupNames.set(groupNum, projectName);
+          console.log(
+            `✅ 映射: 动态列后缀-${groupNum} -> "${projectName}" (数组索引${i})`,
+          );
+        } else {
+          groupNames.set(groupNum, `项目${groupNum}`);
+          console.log(
+            `⚠️ 映射: 动态列后缀-${groupNum} -> 项目${groupNum} (无文件名)`,
+          );
+        }
+      }
+    } else if (horizontalData && horizontalData.length === 1) {
+      console.warn(`⚠️ 横向对比数据只有1条，没有动态列数据`);
+      for (let i = 1; i <= 3; i++) {
+        groupNames.set(i, `项目${i}`);
+      }
+    } else {
+      console.error("❌ 未找到 inv_horizontal_d5 数据！");
+      // 如果没有找到，创建默认映射
+      for (let i = 1; i <= 3; i++) {
+        groupNames.set(i, `项目${i}`);
+      }
+    }
+
+    console.log("最终项目名称映射:", Array.from(groupNames.entries()));
+    console.log("========== 项目名称提取完成 ==========");
     return groupNames;
   }
 
@@ -975,20 +1047,14 @@ class ExcelExporter {
     // 从横向对比数据中提取项目名称
     const groupNames = this.extractGroupNamesFromHorizontalData(resultData);
 
-    const pattern = /^([a-zA-Z_]+)-(\d+)$/;
+    // 匹配格式：字段名-数字，支持中文
+    const pattern = /^([a-zA-Z_\u4e00-\u9fa5]+)-(\d+)$/;
     const dynamicFieldMap = new Map();
     let maxGroup = 0;
 
     for (const row of rowsData) {
       for (const key in row) {
         if (this.blacklist.includes(key)) continue;
-        // 跳过 fileName 相关字段
-        if (
-          key === "fileName" ||
-          key === "u_file_name" ||
-          key === "projectName"
-        )
-          continue;
 
         const match = key.match(pattern);
         if (match) {
@@ -1025,6 +1091,10 @@ class ExcelExporter {
       maxGroup = groupNames.size;
     }
 
+    console.log(
+      `动态分组统计: maxGroup=${maxGroup}, groupNames大小=${groupNames.size}`,
+    );
+
     return { groupCount: maxGroup, dynamicFieldMap: processedMap, groupNames };
   }
 
@@ -1035,10 +1105,15 @@ class ExcelExporter {
     const { groupCount, dynamicFieldMap, tableConfig, groupNames } =
       dynamicInfo;
 
+    console.log(
+      `构建动态列: groupCount=${groupCount}, dynamicFieldMap大小=${dynamicFieldMap.size}`,
+    );
+    console.log("传入的groupNames:", Array.from(groupNames.entries()));
+
     // 如果没有分组，返回空数组
     if (groupCount === 0) return [];
 
-    // 如果没有动态字段但有分组名称，返回空（不创建动态列）
+    // 如果没有动态字段，返回空数组
     if (dynamicFieldMap.size === 0) {
       console.log("没有动态字段，跳过动态列创建");
       return [];
@@ -1050,12 +1125,20 @@ class ExcelExporter {
       ) || [];
 
     const groups = new Map();
+
+    // 从1开始到 groupCount
     for (let i = 1; i <= groupCount; i++) {
-      // 使用从横向对比数据中提取的项目名称，如果没有则使用默认名称
-      const groupName = groupNames.get(i) || `项目${i}`;
+      // 使用 groupNames.get(i) 获取项目名称
+      let groupName = groupNames.get(i);
+      if (!groupName) {
+        groupName = `项目${i}`;
+        console.warn(`警告: 未找到项目${i}的名称，使用默认: ${groupName}`);
+      }
       groups.set(i, { groupName: groupName, fields: [] });
+      console.log(`创建分组 ${i}: ${groupName}`);
     }
 
+    // 遍历动态字段，分配到对应的分组
     for (const [baseName, groupMap] of dynamicFieldMap.entries()) {
       const configField = dynamicBaseFields.find(
         (f) => f.baseName === baseName,
@@ -1078,6 +1161,11 @@ class ExcelExporter {
               subGroup: subGroup,
             });
           }
+          console.log(
+            `分组${groupNum} (${group.groupName}) 添加了 ${fields.length} 个字段`,
+          );
+        } else {
+          console.warn(`警告: 找不到分组 ${groupNum}`);
         }
       }
     }
@@ -1130,10 +1218,17 @@ class ExcelExporter {
             precision: f.precision,
           })),
         });
+        console.log(
+          `创建动态列: ${group.groupName}, 字段数: ${group.fields.length}`,
+        );
       }
     }
 
     console.log(`动态列构建完成，共 ${dynamicColumns.length} 个分组`);
+    console.log(
+      "动态列标题:",
+      dynamicColumns.map((col) => col.header),
+    );
     return dynamicColumns;
   }
 
@@ -1176,13 +1271,10 @@ class ExcelExporter {
    * 创建工作表（内部会对数据进行排序）
    */
   createWorksheet(sheetName, filteredTree, rowsData) {
-    // ========== 对数据进行排序 ==========
     const sortedData = this._sortData(rowsData);
 
     const headerMatrix = this.buildHeaderMatrix(filteredTree);
     const leaves = this.flattenLeaves(filteredTree);
-
-    console.log(`${sheetName} 叶子列数量: ${leaves.length}`);
 
     const worksheet = this.workbook.addWorksheet(sheetName, {
       views: [{ showGridLines: true }],
@@ -1240,7 +1332,7 @@ class ExcelExporter {
       }
     }
 
-    // 写入数据行（使用排序后的数据）
+    // 写入数据行
     for (let rowIndex = 0; rowIndex < sortedData.length; rowIndex++) {
       const row = sortedData[rowIndex];
       const dataRow = worksheet.addRow([]);
@@ -1311,10 +1403,6 @@ class ExcelExporter {
 
   /**
    * 导出 Excel 文件
-   * @param {Object} designData 设计数据
-   * @param {Object} resultData 结果数据
-   * @param {string} customFileName 自定义文件名（可选）
-   * @param {Object} sortOptions 排序选项（可选，覆盖构造函数中的排序配置）
    */
   async export(
     designData,
@@ -1324,7 +1412,6 @@ class ExcelExporter {
   ) {
     console.log("开始导出 Excel...", { mode: this.mode });
 
-    // 如果传入了 sortOptions，临时覆盖排序配置
     if (sortOptions) {
       if (sortOptions.enabled !== undefined) {
         this.sortConfig.enabled = sortOptions.enabled;
@@ -1380,6 +1467,7 @@ class ExcelExporter {
 
         const { groupCount, dynamicFieldMap, groupNames } =
           this.extractDynamicGroups(rowsData, resultData);
+
         console.log(`${tableKey} 动态分组数量: ${groupCount}`);
         console.log(`项目名称映射:`, Object.fromEntries(groupNames));
 
@@ -1400,7 +1488,6 @@ class ExcelExporter {
           continue;
         }
 
-        // createWorksheet 内部会对数据进行排序
         this.createWorksheet(sheetName, finalColumnsTree, rowsData);
         sheetCreated = true;
         console.log(`${tableKey} Sheet 创建完成`);
@@ -1432,9 +1519,6 @@ class ExcelExporter {
 
   /**
    * 静态方法：快速导出
-   * @param {Object} designData 设计数据
-   * @param {Object} resultData 结果数据
-   * @param {Object} options 配置选项
    */
   static async quickExport(designData, resultData, options = {}) {
     const exporter = new ExcelExporter(options);
