@@ -82,7 +82,13 @@ class ExcelExporter {
       "children",
       "key",
       "id",
+      "phid",
+      "desc",
+      "projectName",
     ];
+
+    // 项目名称映射（从横向对比数据中获取）
+    this.projectNameMap = new Map();
   }
 
   /**
@@ -227,7 +233,7 @@ class ExcelExporter {
   }
 
   /**
-   * 解析 s_tree_no 为可排序的数组
+   * 解析排序键为可排序的数组
    */
   static parseTreeNo(treeNo) {
     if (treeNo === null || treeNo === undefined) return [];
@@ -288,10 +294,17 @@ class ExcelExporter {
   static sortTreeData(data, idField, pidField, sortField) {
     if (!Array.isArray(data) || data.length === 0) return data;
 
-    // 检查是否存在排序字段
-    const hasSortField = data.some((item) => item.hasOwnProperty(sortField));
+    // 检查是否存在排序字段且所有记录都有该字段
+    const hasSortField = data.some(
+      (item) =>
+        item.hasOwnProperty(sortField) &&
+        item[sortField] !== undefined &&
+        item[sortField] !== null,
+    );
     if (!hasSortField) {
-      console.log(`[排序] 数据中未找到排序字段 "${sortField}"，使用默认顺序`);
+      console.log(
+        `[排序] 数据中未找到有效的排序字段 "${sortField}"，使用默认顺序`,
+      );
       return data;
     }
 
@@ -302,7 +315,10 @@ class ExcelExporter {
       const id = item[idField];
       const pid = item[pidField];
       const sortValue = item[sortField];
-      const sortKey = sortValue ? ExcelExporter.parseTreeNo(sortValue) : [];
+      const sortKey =
+        sortValue && sortValue !== ""
+          ? ExcelExporter.parseTreeNo(sortValue)
+          : [];
 
       nodeMap.set(id, {
         data: item,
@@ -344,7 +360,17 @@ class ExcelExporter {
     }
 
     const sortNodes = (nodes) => {
-      nodes.sort((a, b) => ExcelExporter.compareSortKeys(a.sortKey, b.sortKey));
+      nodes.sort((a, b) => {
+        // 如果两个都有排序键，进行比较
+        if (a.sortKey.length > 0 && b.sortKey.length > 0) {
+          return ExcelExporter.compareSortKeys(a.sortKey, b.sortKey);
+        }
+        // 如果只有一个有排序键，有排序键的排在前面
+        if (a.sortKey.length > 0) return -1;
+        if (b.sortKey.length > 0) return 1;
+        // 都没有排序键，保持原顺序
+        return 0;
+      });
       for (const node of nodes) {
         if (node.children.length > 0) {
           sortNodes(node.children);
@@ -380,6 +406,7 @@ class ExcelExporter {
       return rowsData;
     }
 
+    // 检查数据中是否有排序字段
     const firstRow = rowsData[0];
     const hasSortField =
       firstRow && firstRow.hasOwnProperty(this.sortConfig.sortField);
@@ -388,6 +415,19 @@ class ExcelExporter {
     if (!hasSortField) {
       console.log(
         `[排序] 数据中未找到排序字段 "${this.sortConfig.sortField}"，使用默认顺序`,
+      );
+      return rowsData;
+    }
+
+    // 检查排序字段是否有有效值
+    const hasValidSortValue = rowsData.some((row) => {
+      const val = row[this.sortConfig.sortField];
+      return val !== undefined && val !== null && val !== "";
+    });
+
+    if (!hasValidSortValue) {
+      console.log(
+        `[排序] 排序字段 "${this.sortConfig.sortField}" 无有效值，使用默认顺序`,
       );
       return rowsData;
     }
@@ -434,9 +474,11 @@ class ExcelExporter {
     const pidField = this.sortConfig.pidField;
 
     // 检查是否有排序字段的有效值
-    const hasValidSortValue = dataCopy.some(
-      (row) => row[sortField] !== undefined && row[sortField] !== null,
-    );
+    const hasValidSortValue = dataCopy.some((row) => {
+      const val = row[sortField];
+      return val !== undefined && val !== null && val !== "";
+    });
+
     if (!hasValidSortValue) {
       console.log("[排序] 排序字段无有效值，使用默认顺序");
       return dataCopy;
@@ -884,27 +926,36 @@ class ExcelExporter {
   }
 
   /**
-   * 提取分组项目的名称映射
+   * 提取分组项目的名称映射（从横向对比数据中）
    */
-  extractGroupNames(rowsData, tableKey) {
+  extractGroupNamesFromHorizontalData(resultData) {
     const groupNames = new Map();
 
-    if (!rowsData || rowsData.length === 0) return groupNames;
+    // 尝试从 inv_horizontal_d5 中获取项目名称
+    const horizontalData = resultData?.inv_horizontal_d5;
 
-    // 从第一行数据中提取项目名称
-    const firstRow = rowsData[0];
+    if (horizontalData && Array.isArray(horizontalData)) {
+      console.log(`找到横向对比数据，共 ${horizontalData.length} 条记录`);
 
-    // 遍历所有字段，查找格式为 "u_file_name-数字" 的字段
-    for (const key in firstRow) {
-      const match = key.match(/^u_file_name-(\d+)$/);
-      if (match) {
-        const groupNum = parseInt(match[1], 10);
-        const fileName = firstRow[key];
-        if (fileName && typeof fileName === "string") {
-          groupNames.set(groupNum, fileName);
-          console.log(`提取项目名称: 项目${groupNum} -> ${fileName}`);
+      horizontalData.forEach((item, index) => {
+        const groupNum = index + 1; // 从1开始编号
+        const fileName = item.fileName || item.u_file_name || `项目${groupNum}`;
+        // 提取文件名（去掉路径和扩展名）
+        let projectName = fileName;
+        if (fileName.includes("/")) {
+          projectName = fileName.split("/").pop();
         }
-      }
+        if (projectName.includes("\\")) {
+          projectName = fileName.split("\\").pop();
+        }
+        if (projectName.endsWith(".xlsx") || projectName.endsWith(".xls")) {
+          projectName = projectName.substring(0, projectName.lastIndexOf("."));
+        }
+        groupNames.set(groupNum, projectName);
+        console.log(`项目${groupNum} 名称: ${projectName} (原始: ${fileName})`);
+      });
+    } else {
+      console.warn("未找到 inv_horizontal_d5 数据，将使用默认项目名称");
     }
 
     return groupNames;
@@ -913,7 +964,7 @@ class ExcelExporter {
   /**
    * 从数据中提取动态分组信息
    */
-  extractDynamicGroups(rowsData, tableKey = null) {
+  extractDynamicGroups(rowsData, resultData = null) {
     if (!rowsData || rowsData.length === 0)
       return {
         groupCount: 0,
@@ -921,8 +972,8 @@ class ExcelExporter {
         groupNames: new Map(),
       };
 
-    // 提取项目名称
-    const groupNames = this.extractGroupNames(rowsData, tableKey);
+    // 从横向对比数据中提取项目名称
+    const groupNames = this.extractGroupNamesFromHorizontalData(resultData);
 
     const pattern = /^([a-zA-Z_]+)-(\d+)$/;
     const dynamicFieldMap = new Map();
@@ -931,8 +982,13 @@ class ExcelExporter {
     for (const row of rowsData) {
       for (const key in row) {
         if (this.blacklist.includes(key)) continue;
-        // 跳过 u_file_name 字段，不作为数据列处理
-        if (key.startsWith("u_file_name-")) continue;
+        // 跳过 fileName 相关字段
+        if (
+          key === "fileName" ||
+          key === "u_file_name" ||
+          key === "projectName"
+        )
+          continue;
 
         const match = key.match(pattern);
         if (match) {
@@ -964,6 +1020,11 @@ class ExcelExporter {
       processedMap.set(baseName, newGroupMap);
     }
 
+    // 如果没有找到动态字段，但 groupNames 有值，说明需要根据 groupNames 创建分组
+    if (maxGroup === 0 && groupNames.size > 0) {
+      maxGroup = groupNames.size;
+    }
+
     return { groupCount: maxGroup, dynamicFieldMap: processedMap, groupNames };
   }
 
@@ -973,7 +1034,15 @@ class ExcelExporter {
   buildDynamicColumns(dynamicInfo) {
     const { groupCount, dynamicFieldMap, tableConfig, groupNames } =
       dynamicInfo;
-    if (groupCount === 0 || dynamicFieldMap.size === 0) return [];
+
+    // 如果没有分组，返回空数组
+    if (groupCount === 0) return [];
+
+    // 如果没有动态字段但有分组名称，返回空（不创建动态列）
+    if (dynamicFieldMap.size === 0) {
+      console.log("没有动态字段，跳过动态列创建");
+      return [];
+    }
 
     const dynamicBaseFields =
       tableConfig?.baseFields?.filter(
@@ -982,7 +1051,7 @@ class ExcelExporter {
 
     const groups = new Map();
     for (let i = 1; i <= groupCount; i++) {
-      // 使用提取的项目名称，如果没有则使用默认名称
+      // 使用从横向对比数据中提取的项目名称，如果没有则使用默认名称
       const groupName = groupNames.get(i) || `项目${i}`;
       groups.set(i, { groupName: groupName, fields: [] });
     }
@@ -1017,8 +1086,10 @@ class ExcelExporter {
     const hasSubGroup = Array.from(groups.values()).some((g) =>
       g.fields.some((f) => f.subGroup),
     );
+
     if (hasSubGroup) {
       for (const [groupNum, group] of groups.entries()) {
+        if (group.fields.length === 0) continue;
         const subGroupMap = new Map();
         for (const field of group.fields) {
           const sub = field.subGroup || "其他";
@@ -1061,6 +1132,8 @@ class ExcelExporter {
         });
       }
     }
+
+    console.log(`动态列构建完成，共 ${dynamicColumns.length} 个分组`);
     return dynamicColumns;
   }
 
@@ -1306,7 +1379,7 @@ class ExcelExporter {
         const baseColumnsTree = this.filterColumns(rawColumns);
 
         const { groupCount, dynamicFieldMap, groupNames } =
-          this.extractDynamicGroups(rowsData, tableKey);
+          this.extractDynamicGroups(rowsData, resultData);
         console.log(`${tableKey} 动态分组数量: ${groupCount}`);
         console.log(`项目名称映射:`, Object.fromEntries(groupNames));
 
