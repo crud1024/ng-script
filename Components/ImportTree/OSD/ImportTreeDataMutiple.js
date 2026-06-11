@@ -109,6 +109,7 @@ class NewTreeStructureGenerator {
     return null;
   }
 
+  // 递归构建字段映射，支持分组列（g_开头的嵌套columns）
   buildFieldMappingForConfig(columns) {
     const fieldMapping = {};
 
@@ -116,34 +117,47 @@ class NewTreeStructureGenerator {
       return fieldMapping;
     }
 
-    const dataColumns = columns.slice(1);
+    // 递归处理列定义
+    const processColumns = (cols) => {
+      cols.forEach((column) => {
+        // 如果是分组列（有 columns 子数组），递归处理
+        if (
+          column.columns &&
+          Array.isArray(column.columns) &&
+          column.columns.length > 0
+        ) {
+          processColumns(column.columns);
+          return;
+        }
 
-    dataColumns.forEach((column) => {
-      if (column.editor && column.editor.name && column.dataIndex) {
-        fieldMapping[column.editor.name] = {
-          dataIndex: column.dataIndex,
-          label: column.editor.label || column.header,
-          fieldName: column.editor.name,
-          fieldType: column.editor.xtype || "Input",
-          required: column.editor.required || false,
-          maxLength: column.editor.maxLength,
-          hidden: column.hidden || false,
-        };
-
-        if (this.isFieldLikelyToHaveEXName(column.editor.name)) {
-          const exNameField = `${column.editor.name}_EXName`;
-          fieldMapping[exNameField] = {
-            dataIndex: `${column.dataIndex}_EXName`,
-            label: `${column.editor.label || column.header} (显示名称)`,
-            fieldName: exNameField,
-            fieldType: "Input",
-            required: false,
+        // 处理普通字段列
+        if (column.editor && column.editor.name && column.dataIndex) {
+          fieldMapping[column.editor.name] = {
+            dataIndex: column.dataIndex,
+            label: column.editor.label || column.header,
+            fieldName: column.editor.name,
+            fieldType: column.editor.xtype || "Input",
+            required: column.editor.required || false,
+            maxLength: column.editor.maxLength,
             hidden: column.hidden || false,
           };
-        }
-      }
-    });
 
+          if (this.isFieldLikelyToHaveEXName(column.editor.name)) {
+            const exNameField = `${column.editor.name}_EXName`;
+            fieldMapping[exNameField] = {
+              dataIndex: `${column.dataIndex}_EXName`,
+              label: `${column.editor.label || column.header} (显示名称)`,
+              fieldName: exNameField,
+              fieldType: "Input",
+              required: false,
+              hidden: column.hidden || false,
+            };
+          }
+        }
+      });
+    };
+
+    processColumns(columns);
     return fieldMapping;
   }
 
@@ -609,8 +623,11 @@ class NewTreeStructureGenerator {
             break;
           }
 
-          const treeModeEnabled =
-            panel.querySelector(".tree-mode-switch")?.checked || false;
+          const switchCheckbox = panel.querySelector(".tree-mode-switch");
+          const treeModeEnabled = switchCheckbox
+            ? switchCheckbox.checked
+            : false;
+
           const levelFieldSelect = panel.querySelector(".level-field-select");
           const separatorInput = panel.querySelector(".separator-input");
 
@@ -914,9 +931,19 @@ class NewTreeStructureGenerator {
       border: 1px solid #e8e8e8;
     `;
 
-    const antSwitch = this.createAntSwitch(
-      isTreeConfig && this.options.defaultTreeMode,
-    );
+    const switchCheckbox = document.createElement("input");
+    switchCheckbox.type = "checkbox";
+    switchCheckbox.className = "tree-mode-switch";
+    switchCheckbox.checked = isTreeConfig && this.options.defaultTreeMode;
+    switchCheckbox.disabled = !isTreeConfig;
+    switchCheckbox.style.cssText = `
+      appearance: auto;
+      -webkit-appearance: auto;
+      width: 18px;
+      height: 18px;
+      cursor: ${isTreeConfig ? "pointer" : "not-allowed"};
+    `;
+
     const switchLabel = document.createElement("span");
     switchLabel.textContent =
       isTreeConfig && this.options.defaultTreeMode ? "层级模式" : "平级模式";
@@ -927,12 +954,7 @@ class NewTreeStructureGenerator {
       min-width: 70px;
     `;
 
-    if (!isTreeConfig) {
-      antSwitch.style.cursor = "not-allowed";
-      antSwitch.style.opacity = "0.6";
-    }
-
-    switchWrapper.appendChild(antSwitch);
+    switchWrapper.appendChild(switchCheckbox);
     switchWrapper.appendChild(switchLabel);
     levelRow.appendChild(switchWrapper);
 
@@ -989,46 +1011,27 @@ class NewTreeStructureGenerator {
     separatorContainer.appendChild(separatorInput);
     levelRow.appendChild(separatorContainer);
 
-    if (autoMatchedLevelField && isTreeConfig && this.options.defaultTreeMode) {
-      this.updateMatchBadge(levelFieldSelect, true);
-    }
-
-    const toggleSwitch = (enabled) => {
+    switchCheckbox.addEventListener("change", (e) => {
+      const enabled = e.target.checked;
       const canEnable = enabled && isTreeConfig;
-      if (canEnable) {
-        antSwitch.style.backgroundColor = "#1890ff";
-        const handle = antSwitch.querySelector(".new-tree-switch-handle");
-        if (handle) handle.style.transform = "translateX(22px)";
-        switchLabel.textContent = "层级模式";
-      } else {
-        antSwitch.style.backgroundColor = "rgba(0, 0, 0, 0.25)";
-        const handle = antSwitch.querySelector(".new-tree-switch-handle");
-        if (handle) handle.style.transform = "translateX(2px)";
-        switchLabel.textContent = "平级模式";
-      }
+
+      switchLabel.textContent = canEnable ? "层级模式" : "平级模式";
       levelFieldSelect.disabled = !canEnable;
       separatorInput.disabled = !canEnable;
       levelFieldSelect.style.opacity = canEnable ? "1" : "0.5";
       separatorInput.style.opacity = canEnable ? "1" : "0.5";
       levelFieldSelect.style.cursor = canEnable ? "pointer" : "not-allowed";
       separatorInput.style.cursor = canEnable ? "pointer" : "not-allowed";
-    };
 
-    antSwitch.addEventListener("click", (e) => {
-      if (!isTreeConfig) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.showAlert("当前明细表不支持层级模式");
-        return;
+      if (canEnable && autoMatchedLevelField) {
+        levelFieldSelect.style.borderColor = "#52c41a";
+        levelFieldSelect.style.backgroundColor = "#f6ffed";
+      } else {
+        levelFieldSelect.style.borderColor = "#d9d9d9";
+        levelFieldSelect.style.backgroundColor = canEnable
+          ? "white"
+          : "#f5f5f5";
       }
-      e.stopPropagation();
-      e.preventDefault();
-      toggleSwitch(
-        !(
-          levelFieldSelect.disabled === false &&
-          separatorInput.disabled === false
-        ),
-      );
     });
 
     section.content.appendChild(levelRow);
@@ -1284,6 +1287,11 @@ class NewTreeStructureGenerator {
             config.separator,
           );
 
+          console.log(
+            `Sheet "${config.sheetName}" 生成树形平级数据 (${parsedData.length}条)，数据结构:`,
+            parsedData.length > 0 ? Object.keys(parsedData[0]) : [],
+          );
+
           if (typeof this.options.onBeforeImport === "function") {
             const hookResult = await this.options.onBeforeImport(
               parsedData,
@@ -1425,9 +1433,22 @@ class NewTreeStructureGenerator {
 
     console.log("生成树形数据 - 层级字段:", levelField, "分隔符:", separator);
 
-    rows.forEach((row, rowIndex) => {
+    const sortedRows = [...rows].sort((a, b) => {
+      const pathA =
+        a[levelIndex] !== undefined && a[levelIndex] !== null
+          ? String(a[levelIndex]).trim()
+          : "";
+      const pathB =
+        b[levelIndex] !== undefined && b[levelIndex] !== null
+          ? String(b[levelIndex]).trim()
+          : "";
+      return pathA.length - pathB.length;
+    });
+
+    sortedRows.forEach((row, rowIndex) => {
       const levelPath = row[levelIndex];
-      if (!levelPath && levelPath !== 0) return;
+      if (levelPath === undefined || levelPath === null || levelPath === "")
+        return;
 
       const levelPathStr = String(levelPath).trim();
       if (!levelPathStr) return;
@@ -1446,7 +1467,6 @@ class NewTreeStructureGenerator {
       const nodeData = {
         s_tree_id: treeId,
         s_tree_pid: treePid,
-        // 保留原始层级字符串，供后续排序使用
         levelCode: levelPathStr,
       };
 
@@ -1476,176 +1496,52 @@ class NewTreeStructureGenerator {
     return treeData;
   }
 
+  /**
+   * 处理字段值，保持原始数据类型和精度
+   * 对于数字类型（整数/浮点数）完全保持原样
+   * 只有包含|分隔符的字符串才进行特殊处理
+   */
   processFieldValue(fieldName, rawValue) {
     const result = {};
+
+    // 处理 null/undefined/空值
     if (rawValue === null || rawValue === undefined || rawValue === "") {
       result[fieldName] = "";
       return result;
     }
-    const stringValue = String(rawValue).trim();
-    if (stringValue.includes("|") && stringValue.split("|").length === 2) {
-      const [value, displayText] = stringValue.split("|");
-      result[fieldName] = value.trim();
-    } else if (
-      stringValue.includes("|") &&
-      stringValue.split("|").length === 3
-    ) {
-      const [mainValue, subValue, displayText] = stringValue.split("|");
-      result[fieldName] = mainValue.trim();
-      const exNameField = `${fieldName}_EXName`;
-      result[exNameField] = displayText.trim();
-    } else {
-      result[fieldName] = stringValue;
+
+    // 如果是数字类型，直接保持原样（包括整数和浮点数）
+    if (typeof rawValue === "number") {
+      result[fieldName] = rawValue;
+      return result;
     }
+
+    // 对于非数字类型，转为字符串处理
+    const stringValue = String(rawValue);
+
+    // 检查是否包含 | 分隔符（这是系统特殊格式）
+    if (stringValue.includes("|")) {
+      const parts = stringValue.split("|");
+
+      if (parts.length === 2) {
+        // 格式：value|displayText
+        result[fieldName] = parts[0].trim();
+      } else if (parts.length === 3) {
+        // 格式：mainValue|subValue|displayText
+        result[fieldName] = parts[0].trim();
+        const exNameField = `${fieldName}_EXName`;
+        result[exNameField] = parts[2].trim();
+      } else {
+        // 异常情况，保持原值
+        result[fieldName] = rawValue;
+      }
+    } else {
+      // 没有 | 分隔符，保持原始值（可能是字符串、布尔值等）
+      result[fieldName] = rawValue;
+    }
+
     return result;
   }
-
-  // ===================== 升级后的树形转换逻辑（基于 ListToLayer） =====================
-
-  /**
-   * 列表转树形结构（内部使用增强算法）
-   * @param {Array} list - 扁平数组
-   * @param {Object} options - 可选配置
-   * @returns {Array} 树形结构数组
-   */
-  new_listToTree(list, options = {}) {
-    if (!list || !Array.isArray(list) || list.length === 0) {
-      return [];
-    }
-    return this._convertListToTree(list, options);
-  }
-
-  /**
-   * 核心转换方法，整合了 ListToLayer 的全部健壮逻辑
-   */
-  _convertListToTree(list, options = {}) {
-    const {
-      idKey = "s_tree_id",
-      parentKey = "s_tree_pid",
-      childrenKey = "children",
-      fieldMapping = null,
-      sortKey = null,
-      ascending = true,
-    } = options;
-
-    // 字段映射处理（如果有）
-    const mapNode = (node) => {
-      if (!fieldMapping) return { ...node };
-      const mapped = {};
-      Object.keys(node).forEach((key) => {
-        if (fieldMapping[key] !== undefined) {
-          mapped[fieldMapping[key]] = node[key];
-        } else if (key !== childrenKey) {
-          mapped[key] = node[key];
-        }
-      });
-      return mapped;
-    };
-
-    // 第一步：构建节点映射，同时进行字段映射
-    const nodeMap = list.reduce((acc, node) => {
-      const mappedNode = mapNode(node);
-      const nodeId = mappedNode[idKey];
-      if (nodeId !== undefined && nodeId !== null) {
-        acc[nodeId] = { ...mappedNode, [childrenKey]: [] };
-      }
-      return acc;
-    }, {});
-
-    // 第二步：组织树结构
-    const roots = [];
-    list.forEach((node) => {
-      const currentNode = nodeMap[node[idKey]];
-      const parentId = node[parentKey];
-      if (!currentNode) return;
-
-      if (
-        parentId === null ||
-        parentId === undefined ||
-        parentId === "" ||
-        parentId === "0" ||
-        !nodeMap[parentId]
-      ) {
-        // 无父节点或父节点不存在，视为根节点
-        roots.push(currentNode);
-      } else {
-        nodeMap[parentId][childrenKey].push(currentNode);
-      }
-    });
-
-    // 第三步：排序处理（如果指定了 sortKey）
-    if (sortKey) {
-      const sortFn = this._buildCompareFunction(sortKey, ascending);
-      const sortTree = (nodes) => {
-        nodes.sort(sortFn);
-        nodes.forEach((n) => {
-          if (n[childrenKey] && n[childrenKey].length > 0) {
-            sortTree(n[childrenKey]);
-          }
-        });
-      };
-      sortTree(roots);
-    }
-
-    return roots;
-  }
-
-  /**
-   * 构建比较函数，支持数字路径编码排序（如 "0101" "0102"）
-   */
-  _buildCompareFunction(sortKey, ascending) {
-    const isPathCode = (value) => {
-      if (typeof value !== "string") return false;
-      return /^\d+$/.test(value);
-    };
-
-    const parsePathCode = (pathCode) => {
-      const parts = [];
-      for (let i = 0; i < pathCode.length; i += 2) {
-        const part = pathCode.substring(i, i + 2);
-        parts.push(parseInt(part, 10));
-      }
-      return parts;
-    };
-
-    const comparePathCodes = (a, b) => {
-      const aParts = parsePathCode(a);
-      const bParts = parsePathCode(b);
-      const minLen = Math.min(aParts.length, bParts.length);
-      for (let i = 0; i < minLen; i++) {
-        if (aParts[i] !== bParts[i]) {
-          return ascending ? aParts[i] - bParts[i] : bParts[i] - aParts[i];
-        }
-      }
-      return ascending
-        ? aParts.length - bParts.length
-        : bParts.length - aParts.length;
-    };
-
-    return (a, b) => {
-      let aVal = a[sortKey];
-      let bVal = b[sortKey];
-
-      if (aVal == null && bVal == null) return 0;
-      if (aVal == null) return ascending ? 1 : -1;
-      if (bVal == null) return ascending ? -1 : 1;
-
-      const aStr = String(aVal);
-      const bStr = String(bVal);
-
-      if (isPathCode(aStr) && isPathCode(bStr)) {
-        return comparePathCodes(aStr, bStr);
-      }
-
-      if (typeof aVal === "number" && typeof bVal === "number") {
-        return ascending ? aVal - bVal : bVal - aVal;
-      }
-
-      return ascending ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
-    };
-  }
-
-  // ===================== UI 辅助方法（保留原有实现） =====================
 
   createCollapsiblePanel(title, expanded = true) {
     const panel = document.createElement("div");
@@ -1720,54 +1616,6 @@ class NewTreeStructureGenerator {
     panel.appendChild(content);
     panel.content = content;
     return panel;
-  }
-
-  createAntSwitch(checked = false) {
-    const switchContainer = document.createElement("div");
-    switchContainer.className = `new-tree-switch ${checked ? "new-tree-switch-checked" : ""}`;
-    switchContainer.style.cssText = `
-      position: relative;
-      display: inline-block;
-      width: 44px;
-      height: 22px;
-      line-height: 22px;
-      border-radius: 22px;
-      background-color: ${checked ? "#1890ff" : "rgba(0, 0, 0, 0.25)"};
-      cursor: pointer;
-      transition: all 0.2s;
-      user-select: none;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    `;
-    const switchHandle = document.createElement("div");
-    switchHandle.className = "new-tree-switch-handle";
-    switchHandle.style.cssText = `
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      width: 18px;
-      height: 18px;
-      border-radius: 18px;
-      background-color: white;
-      transition: all 0.2s;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-      transform: ${checked ? "translateX(22px)" : "translateX(2px)"};
-    `;
-    switchContainer.appendChild(switchHandle);
-    switchContainer.addEventListener("mouseenter", () => {
-      if (!checked) {
-        switchContainer.style.backgroundColor = "rgba(0, 0, 0, 0.35)";
-      } else {
-        switchContainer.style.backgroundColor = "#40a9ff";
-      }
-    });
-    switchContainer.addEventListener("mouseleave", () => {
-      if (!checked) {
-        switchContainer.style.backgroundColor = "rgba(0, 0, 0, 0.25)";
-      } else {
-        switchContainer.style.backgroundColor = "#1890ff";
-      }
-    });
-    return switchContainer;
   }
 
   createOverlay() {
@@ -2030,6 +1878,36 @@ class NewTreeStructureGenerator {
     return result;
   }
 
+  new_listToTree(list, options = {}) {
+    const {
+      idKey = "s_tree_id",
+      parentKey = "s_tree_pid",
+      childrenKey = "children",
+    } = options;
+    const nodeMap = {};
+    const roots = [];
+
+    list.forEach((node) => {
+      nodeMap[node[idKey]] = {
+        ...node,
+        [childrenKey]: [],
+      };
+    });
+
+    list.forEach((node) => {
+      const currentNode = nodeMap[node[idKey]];
+      const parentId = node[parentKey];
+
+      if (parentId && parentId !== "0" && nodeMap[parentId]) {
+        nodeMap[parentId][childrenKey].push(currentNode);
+      } else {
+        roots.push(currentNode);
+      }
+    });
+
+    return roots;
+  }
+
   async importToGrid(data, isTreeMode = true, gridId) {
     try {
       const targetGridId = gridId || this.options.gridId;
@@ -2039,15 +1917,13 @@ class NewTreeStructureGenerator {
       }
       let importData = data;
       if (isTreeMode) {
-        // 智能排序：如果数据中包含 levelCode 字段，则启用路径编码排序
-        const sample = data[0] || {};
-        const sortOptions = {};
-        if (sample.levelCode) {
-          sortOptions.sortKey = "levelCode";
-          sortOptions.ascending = true;
-        }
-        importData = this.new_listToTree(data, sortOptions);
-        console.log(`导入树形数据到 ${targetGridId}:`, importData);
+        importData = this.new_listToTree(data);
+        console.log(
+          `导入树形数据到 ${targetGridId} (共${importData.length}个根节点):`,
+          importData.length > 0
+            ? `示例根节点: ${JSON.stringify(importData[0]).substring(0, 200)}...`
+            : "空数据",
+        );
       } else {
         console.log(`导入平级数据到 ${targetGridId}: 共${importData.length}条`);
       }
