@@ -528,7 +528,7 @@ class NewTreeStructureGenerator {
       reader.onload = (event) => {
         try {
           const data = new Uint8Array(event.target.result);
-          const workbook = XLSX.read(data, { type: "array" });
+          const workbook = XLSX.read(data, { type: "array", cellStyles: true });
           const sheetsInfo = [];
           workbook.SheetNames.forEach((name) => {
             const worksheet = workbook.Sheets[name];
