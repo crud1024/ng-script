@@ -59,7 +59,7 @@ class DynamicTemplateExporter {
         freezeHeader: true,
         // ExcelJS CDN 地址
         excelJsUrl:
-          "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Utils/ExcelJS/V1/exceljs.min.js",
+          "https://fastly.jsdelivr.net/gh/crud1024/ng-script@main/Utils/ExcelJS/ V1/exceljs.min.js",
         // 表头样式
         headerStyle: null,
       },
