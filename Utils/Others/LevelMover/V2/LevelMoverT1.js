@@ -3,8 +3,8 @@ class TreeTableManager {
   constructor(config, deps) {
     // 注入外部依赖
     this.deps = deps || {};
-    this.useClick = this.deps.useClick || window.useClick;
     this.$NG = this.deps.$NG || window.$NG;
+    this.tableInstances = new Map();
 
     // 支持多种配置方式
     if (typeof config === "string") {
@@ -36,10 +36,10 @@ class TreeTableManager {
     // 初始化按钮配置
     this.initButtonConfigs();
 
-    // 注册操作
+    // 注册操作（使用原生事件监听）
     this.initIconOptimization();
     this.initAllTableListeners();
-    this.registerAllActions();
+    this.bindToolbarEvents();
   }
 
   // ==================== 配置合并 ====================
@@ -52,24 +52,28 @@ class TreeTableManager {
           icon: "default_up",
           originId: "u_up",
           tooltip: "升级节点",
+          action: "upgrade",
         },
         down: {
           text: "降级",
           icon: "default_down",
           originId: "u_down",
           tooltip: "降级节点",
+          action: "downgrade",
         },
         rise: {
           text: "上移",
           icon: "default_rise",
           originId: "u_rise",
           tooltip: "上移节点",
+          action: "moveUp",
         },
         decline: {
           text: "下移",
           icon: "default_decline",
           originId: "u_decline",
           tooltip: "下移节点",
+          action: "moveDown",
         },
       },
       customIcons: {},
@@ -142,6 +146,332 @@ class TreeTableManager {
       const context = this.getTableContext(tableName);
       context.buttonConfigs = this.buildButtonConfigs(tableName);
     });
+  }
+
+  // ==================== 绑定工具栏事件（原生方式） ====================
+  bindToolbarEvents() {
+    const self = this;
+
+    this.config.tables.forEach((tableName) => {
+      const toolbarId = `toolbar_${tableName}`;
+      const toolbar = document.getElementById(toolbarId);
+      if (!toolbar) {
+        console.warn(`工具栏 #${toolbarId} 未找到，跳过事件绑定`);
+        return;
+      }
+
+      const context = this.getTableContext(tableName);
+      const buttonConfigs = context.buttonConfigs;
+
+      // 为每个按钮绑定事件
+      const actions = ["up", "down", "rise", "decline"];
+      actions.forEach((action) => {
+        const config = buttonConfigs[action];
+        if (!config) return;
+
+        const originId = config.originId;
+        const button = toolbar.querySelector(`[originid="${originId}"]`);
+        if (!button) {
+          console.warn(`按钮 originid="${originId}" 未找到，跳过事件绑定`);
+          return;
+        }
+
+        // 移除之前绑定的事件（避免重复绑定）
+        button.removeEventListener("click", self._eventHandlers.get(button));
+
+        // 创建事件处理函数
+        const handler = function (e) {
+          e.preventDefault();
+          self.handleAction(tableName, action);
+        };
+
+        // 保存引用以便后续移除
+        if (!self._eventHandlers) {
+          self._eventHandlers = new Map();
+        }
+        self._eventHandlers.set(button, handler);
+
+        button.addEventListener("click", handler);
+        console.log(`✅ 已绑定按钮: ${tableName}.${originId} -> ${action}`);
+      });
+    });
+  }
+
+  // ==================== 处理按钮动作 ====================
+  handleAction(tableName, action) {
+    const self = this;
+    const context = this.updateTableContext(tableName);
+    const { table, rows, row, parentRow } = context;
+    const buttonConfigs = context.buttonConfigs;
+    const config = buttonConfigs[action];
+
+    // 通用验证
+    if (rows.length === 0) {
+      this.$NG.message(config.tooltip || "请确认已选中分枝");
+      return;
+    }
+
+    if (!this.isValidTreeStructure(rows)) {
+      this.$NG.message("请确认选中单分枝");
+      return;
+    }
+
+    // 根据动作类型执行不同操作
+    switch (action) {
+      case "up":
+        this.handleUpgrade(table, row, parentRow);
+        break;
+      case "down":
+        this.handleDowngrade(table, rows, row);
+        break;
+      case "rise":
+        this.handleMoveUp(table, row);
+        break;
+      case "decline":
+        this.handleMoveDown(table, row);
+        break;
+      default:
+        this.$NG.message("未知操作");
+    }
+  }
+
+  // ==================== 升级操作 ====================
+  handleUpgrade(table, row, parentRow) {
+    if (row && (row.s_tree_pid == 0 || row.s_tree_pid == null)) {
+      this.$NG.message("当前已是根节点");
+      return;
+    }
+
+    const rowCopy = this.cloneNode(row);
+
+    if (
+      parentRow &&
+      (parentRow.s_tree_pid == 0 || parentRow.s_tree_pid == null)
+    ) {
+      // 父节点是根节点 → 升级为根节点
+      rowCopy.s_tree_pid = 0;
+      table.deleteCheckedRows();
+
+      const data = table.getRows();
+      data.push(rowCopy);
+      const normalizedData = this.normalizeTree(data);
+      this.applyTableData(table, normalizedData);
+    } else if (
+      parentRow &&
+      parentRow.s_tree_pid != 0 &&
+      parentRow.s_tree_pid != null
+    ) {
+      // 升级到祖父节点下
+      rowCopy.s_tree_pid = parentRow.s_tree_pid;
+      table.deleteCheckedRows();
+
+      const data = table.getRows();
+      const targetParent = this.findNodeById(data, parentRow.s_tree_pid);
+
+      if (targetParent) {
+        if (!targetParent.children) {
+          targetParent.children = [];
+        }
+        targetParent.children.push(rowCopy);
+        const normalizedData = this.normalizeTree(data);
+        this.applyTableData(table, normalizedData);
+      }
+    } else {
+      this.$NG.message("升级失败");
+    }
+  }
+
+  // ==================== 降级操作 ====================
+  handleDowngrade(table, rows, row) {
+    if (row.treeIndex == 0) {
+      this.$NG.message("降级失败，上方无可挂接的节点。");
+      return;
+    }
+
+    const selectedIndex = table.getSelectedIndexes()[0] || 0;
+    const data = table.getRows();
+    const selectedRow = data[selectedIndex];
+
+    if (!selectedRow) {
+      this.$NG.message("未找到选中的行");
+      return;
+    }
+
+    const targetParentNode = data[selectedIndex - 1];
+    if (!targetParentNode) {
+      this.$NG.message("降级失败，上方无可挂接的节点。");
+      return;
+    }
+
+    if (!targetParentNode.children) {
+      targetParentNode.children = [];
+    }
+
+    if (row && (row.s_tree_pid == 0 || row.s_tree_pid == null)) {
+      // 根节点降级
+      const rowCopy = this.cloneNode(row);
+      rowCopy.s_tree_pid = targetParentNode.s_tree_id;
+      targetParentNode.children.push(rowCopy);
+      data.splice(selectedIndex, 1);
+      data.push(rowCopy);
+
+      const normalizedData = this.normalizeTree(data);
+      this.applyTableData(table, normalizedData);
+      targetParentNode.isExpanded = true;
+    } else if (row && row.s_tree_pid != 0 && row.s_tree_pid != null) {
+      // 分枝节点降级
+      selectedRow.s_tree_pid = targetParentNode.s_tree_id;
+      targetParentNode.children.push(selectedRow);
+      table.deleteCheckedRows();
+
+      const newData = table.getRows();
+      const normalizedData = this.normalizeTree(newData);
+      this.applyTableData(table, normalizedData);
+      targetParentNode.isExpanded = true;
+    }
+  }
+
+  // ==================== 上移操作 ====================
+  handleMoveUp(table, row) {
+    const selectedIndex = table.getSelectedIndexes()[0] || 0;
+    const data = table.getRows();
+    const selectedRow = data[selectedIndex];
+
+    if (!selectedRow) {
+      this.$NG.message("未找到选中的行");
+      return;
+    }
+
+    if (selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) {
+      // 根节点上移
+      const rootIndex = data.findIndex(
+        (d) => d.s_tree_id === selectedRow.s_tree_id,
+      );
+      let prevRootIndex = -1;
+      for (let i = rootIndex - 1; i >= 0; i--) {
+        if (data[i].s_tree_pid == 0 || data[i].s_tree_pid == null) {
+          prevRootIndex = i;
+          break;
+        }
+      }
+
+      if (prevRootIndex === -1) {
+        this.$NG.message("上移失败，已是第一个根节点");
+        return;
+      }
+
+      [data[rootIndex], data[prevRootIndex]] = [
+        data[prevRootIndex],
+        data[rootIndex],
+      ];
+      table.clearSelected();
+    } else {
+      // 非根节点上移
+      const parentNode = selectedRow.treeParent;
+      if (
+        !parentNode ||
+        !parentNode.children ||
+        parentNode.children.length === 0
+      ) {
+        this.$NG.message("上移失败，未找到同级节点");
+        return;
+      }
+
+      const currentIndex = selectedRow.treeIndex;
+      if (currentIndex === 0 || currentIndex == null) {
+        this.$NG.message("上移失败，已是该层级第一个节点");
+        return;
+      }
+
+      const siblings = parentNode.children;
+      [siblings[currentIndex - 1], siblings[currentIndex]] = [
+        siblings[currentIndex],
+        siblings[currentIndex - 1],
+      ];
+    }
+
+    const normalizedData = this.normalizeTree(data);
+    this.applyTableData(table, normalizedData);
+
+    if (
+      !(selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) &&
+      selectedRow.treeParent
+    ) {
+      selectedRow.treeParent.isExpanded = true;
+    }
+  }
+
+  // ==================== 下移操作 ====================
+  handleMoveDown(table, row) {
+    const selectedIndex = table.getSelectedIndexes()[0] || 0;
+    const data = table.getRows();
+    const selectedRow = data[selectedIndex];
+
+    if (!selectedRow) {
+      this.$NG.message("未找到选中的行");
+      return;
+    }
+
+    if (selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) {
+      // 根节点下移
+      const rootIndex = data.findIndex(
+        (d) => d.s_tree_id === selectedRow.s_tree_id,
+      );
+      let nextRootIndex = -1;
+      for (let i = rootIndex + 1; i < data.length; i++) {
+        if (data[i].s_tree_pid == 0 || data[i].s_tree_pid == null) {
+          nextRootIndex = i;
+          break;
+        }
+      }
+
+      if (nextRootIndex === -1) {
+        this.$NG.message("下移失败，已是最后一个根节点");
+        return;
+      }
+
+      [data[rootIndex], data[nextRootIndex]] = [
+        data[nextRootIndex],
+        data[rootIndex],
+      ];
+      table.clearSelected();
+    } else {
+      // 非根节点下移
+      const parentNode = selectedRow.treeParent;
+      if (
+        !parentNode ||
+        !parentNode.children ||
+        parentNode.children.length === 0
+      ) {
+        this.$NG.message("下移失败，未找到同级节点");
+        return;
+      }
+
+      const currentIndex = selectedRow.treeIndex;
+      if (
+        currentIndex >= parentNode.children.length - 1 ||
+        currentIndex == null
+      ) {
+        this.$NG.message("下移失败，已是该层级最后一个节点");
+        return;
+      }
+
+      const siblings = parentNode.children;
+      [siblings[currentIndex + 1], siblings[currentIndex]] = [
+        siblings[currentIndex],
+        siblings[currentIndex + 1],
+      ];
+    }
+
+    const normalizedData = this.normalizeTree(data);
+    this.applyTableData(table, normalizedData);
+
+    if (
+      !(selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) &&
+      selectedRow.treeParent
+    ) {
+      selectedRow.treeParent.isExpanded = true;
+    }
   }
 
   // ==================== 图标优化 ====================
@@ -449,304 +779,6 @@ class TreeTableManager {
     });
   }
 
-  // ==================== 注册所有操作 ====================
-  registerAllActions() {
-    const self = this;
-    this.config.tables.forEach((tableName) => {
-      this.registerAction(tableName);
-    });
-  }
-
-  registerAction(tableName) {
-    const self = this;
-    const context = this.getTableContext(tableName);
-    const buttonConfigs = context.buttonConfigs;
-
-    // 升级
-    this.useClick(async function ({ args }) {
-      const context = self.updateTableContext(tableName);
-      const { table, rows, row, parentRow } = context;
-
-      if (rows.length === 0) {
-        self.$NG.message(buttonConfigs.up.tooltip || "请确认已选中分枝");
-        return;
-      }
-
-      if (row && (row.s_tree_pid == 0 || row.s_tree_pid == null)) {
-        self.$NG.message("当前已是根节点");
-        return;
-      }
-
-      if (!self.isValidTreeStructure(rows)) {
-        self.$NG.message("请确认选中单分枝");
-        return;
-      }
-
-      const selectedIndex = table.getSelectedIndexes()[0] || 0;
-      const rowCopy = self.cloneNode(row);
-
-      if (
-        parentRow &&
-        (parentRow.s_tree_pid == 0 || parentRow.s_tree_pid == null)
-      ) {
-        rowCopy.s_tree_pid = 0;
-        table.deleteCheckedRows();
-
-        const data = table.getRows();
-        data.push(rowCopy);
-        const normalizedData = self.normalizeTree(data);
-        self.applyTableData(table, normalizedData);
-      } else if (
-        parentRow &&
-        parentRow.s_tree_pid != 0 &&
-        parentRow.s_tree_pid != null
-      ) {
-        rowCopy.s_tree_pid = parentRow.s_tree_pid;
-        table.deleteCheckedRows();
-
-        const data = table.getRows();
-        const targetParent = self.findNodeById(data, parentRow.s_tree_pid);
-
-        if (targetParent) {
-          if (!targetParent.children) {
-            targetParent.children = [];
-          }
-          targetParent.children.push(rowCopy);
-          const normalizedData = self.normalizeTree(data);
-          self.applyTableData(table, normalizedData);
-        }
-      } else {
-        self.$NG.message("升级失败");
-      }
-    }, `${tableName}.${buttonConfigs.up.originId}`);
-
-    // 降级
-    this.useClick(async function ({ args }) {
-      const context = self.updateTableContext(tableName);
-      const { table, rows, row } = context;
-
-      if (rows.length === 0) {
-        self.$NG.message(buttonConfigs.down.tooltip || "请确认已选中分枝");
-        return;
-      }
-
-      if (!self.isValidTreeStructure(rows)) {
-        self.$NG.message("请确认选中单分枝");
-        return;
-      }
-
-      if (row.treeIndex == 0) {
-        self.$NG.message("降级失败，上方无可挂接的节点。");
-        return;
-      }
-
-      const selectedIndex = table.getSelectedIndexes()[0] || 0;
-      const data = table.getRows();
-      const selectedRow = data[selectedIndex];
-
-      if (!selectedRow) {
-        self.$NG.message("未找到选中的行");
-        return;
-      }
-
-      const targetParentNode = data[selectedIndex - 1];
-      if (!targetParentNode) {
-        self.$NG.message("降级失败，上方无可挂接的节点。");
-        return;
-      }
-
-      if (!targetParentNode.children) {
-        targetParentNode.children = [];
-      }
-
-      if (row && (row.s_tree_pid == 0 || row.s_tree_pid == null)) {
-        const rowCopy = self.cloneNode(row);
-        rowCopy.s_tree_pid = targetParentNode.s_tree_id;
-        targetParentNode.children.push(rowCopy);
-        data.splice(selectedIndex, 1);
-        data.push(rowCopy);
-
-        const normalizedData = self.normalizeTree(data);
-        self.applyTableData(table, normalizedData);
-        targetParentNode.isExpanded = true;
-      } else if (row && row.s_tree_pid != 0 && row.s_tree_pid != null) {
-        selectedRow.s_tree_pid = targetParentNode.s_tree_id;
-        targetParentNode.children.push(selectedRow);
-        table.deleteCheckedRows();
-
-        const newData = table.getRows();
-        const normalizedData = self.normalizeTree(newData);
-        self.applyTableData(table, normalizedData);
-        targetParentNode.isExpanded = true;
-      }
-    }, `${tableName}.${buttonConfigs.down.originId}`);
-
-    // 上移
-    this.useClick(async function ({ args }) {
-      const context = self.updateTableContext(tableName);
-      const { table, rows, row } = context;
-
-      if (rows.length === 0) {
-        self.$NG.message(buttonConfigs.rise.tooltip || "请确认已选中分枝");
-        return;
-      }
-
-      if (!self.isValidTreeStructure(rows)) {
-        self.$NG.message("请确认选中单分枝");
-        return;
-      }
-
-      const selectedIndex = table.getSelectedIndexes()[0] || 0;
-      const data = table.getRows();
-      const selectedRow = data[selectedIndex];
-
-      if (!selectedRow) {
-        self.$NG.message("未找到选中的行");
-        return;
-      }
-
-      if (selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) {
-        const rootIndex = data.findIndex(
-          (d) => d.s_tree_id === selectedRow.s_tree_id,
-        );
-        let prevRootIndex = -1;
-        for (let i = rootIndex - 1; i >= 0; i--) {
-          if (data[i].s_tree_pid == 0 || data[i].s_tree_pid == null) {
-            prevRootIndex = i;
-            break;
-          }
-        }
-
-        if (prevRootIndex === -1) {
-          self.$NG.message("上移失败，已是第一个根节点");
-          return;
-        }
-
-        [data[rootIndex], data[prevRootIndex]] = [
-          data[prevRootIndex],
-          data[rootIndex],
-        ];
-        table.clearSelected();
-      } else {
-        const parentNode = selectedRow.treeParent;
-        if (
-          !parentNode ||
-          !parentNode.children ||
-          parentNode.children.length === 0
-        ) {
-          self.$NG.message("上移失败，未找到同级节点");
-          return;
-        }
-
-        const currentIndex = selectedRow.treeIndex;
-        if (currentIndex === 0 || currentIndex == null) {
-          self.$NG.message("上移失败，已是该层级第一个节点");
-          return;
-        }
-
-        const siblings = parentNode.children;
-        [siblings[currentIndex - 1], siblings[currentIndex]] = [
-          siblings[currentIndex],
-          siblings[currentIndex - 1],
-        ];
-      }
-
-      const normalizedData = self.normalizeTree(data);
-      self.applyTableData(table, normalizedData);
-
-      if (
-        !(selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) &&
-        selectedRow.treeParent
-      ) {
-        selectedRow.treeParent.isExpanded = true;
-      }
-    }, `${tableName}.${buttonConfigs.rise.originId}`);
-
-    // 下移
-    this.useClick(async function ({ args }) {
-      const context = self.updateTableContext(tableName);
-      const { table, rows, row } = context;
-
-      if (rows.length === 0) {
-        self.$NG.message(buttonConfigs.decline.tooltip || "请确认已选中分枝");
-        return;
-      }
-
-      if (!self.isValidTreeStructure(rows)) {
-        self.$NG.message("请确认选中单分枝");
-        return;
-      }
-
-      const selectedIndex = table.getSelectedIndexes()[0] || 0;
-      const data = table.getRows();
-      const selectedRow = data[selectedIndex];
-
-      if (!selectedRow) {
-        self.$NG.message("未找到选中的行");
-        return;
-      }
-
-      if (selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) {
-        const rootIndex = data.findIndex(
-          (d) => d.s_tree_id === selectedRow.s_tree_id,
-        );
-        let nextRootIndex = -1;
-        for (let i = rootIndex + 1; i < data.length; i++) {
-          if (data[i].s_tree_pid == 0 || data[i].s_tree_pid == null) {
-            nextRootIndex = i;
-            break;
-          }
-        }
-
-        if (nextRootIndex === -1) {
-          self.$NG.message("下移失败，已是最后一个根节点");
-          return;
-        }
-
-        [data[rootIndex], data[nextRootIndex]] = [
-          data[nextRootIndex],
-          data[rootIndex],
-        ];
-        table.clearSelected();
-      } else {
-        const parentNode = selectedRow.treeParent;
-        if (
-          !parentNode ||
-          !parentNode.children ||
-          parentNode.children.length === 0
-        ) {
-          self.$NG.message("下移失败，未找到同级节点");
-          return;
-        }
-
-        const currentIndex = selectedRow.treeIndex;
-        if (
-          currentIndex >= parentNode.children.length - 1 ||
-          currentIndex == null
-        ) {
-          self.$NG.message("下移失败，已是该层级最后一个节点");
-          return;
-        }
-
-        const siblings = parentNode.children;
-        [siblings[currentIndex + 1], siblings[currentIndex]] = [
-          siblings[currentIndex],
-          siblings[currentIndex + 1],
-        ];
-      }
-
-      const normalizedData = self.normalizeTree(data);
-      self.applyTableData(table, normalizedData);
-
-      if (
-        !(selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) &&
-        selectedRow.treeParent
-      ) {
-        selectedRow.treeParent.isExpanded = true;
-      }
-    }, `${tableName}.${buttonConfigs.decline.originId}`);
-  }
-
   // ==================== 工具方法 ====================
   cloneNode(node) {
     if (!node) return null;
@@ -806,12 +838,14 @@ class TreeTableManager {
       const toolbarId = `toolbar_${tableName}`;
       if (document.getElementById(toolbarId)) {
         this.initIconOptimization();
+        this.bindToolbarEvents();
       }
     } else {
       this.config.tables.forEach((name) => {
         this.updateTableContext(name);
       });
       this.initIconOptimization();
+      this.bindToolbarEvents();
     }
   }
 
@@ -826,6 +860,13 @@ class TreeTableManager {
 
   // ==================== 销毁 ====================
   destroy() {
+    // 移除所有事件监听
+    if (this._eventHandlers) {
+      this._eventHandlers.forEach((handler, button) => {
+        button.removeEventListener("click", handler);
+      });
+      this._eventHandlers.clear();
+    }
     this.tables.clear();
     this.currentTable = null;
   }
