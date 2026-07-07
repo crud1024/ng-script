@@ -1,0 +1,928 @@
+class TreeTableManager {
+  // ==================== 构造函数 ====================
+  constructor(config, deps) {
+    // 注入外部依赖
+    this.deps = deps || {};
+    this.useClick = this.deps.useClick || window.useClick;
+    this.$NG = this.deps.$NG || window.$NG;
+
+    // 支持多种配置方式
+    if (typeof config === "string") {
+      config = { tables: [config] };
+    } else if (Array.isArray(config)) {
+      config = { tables: config };
+    }
+
+    this.config = this.mergeConfig(config);
+    this.tables = new Map();
+    this.currentTable = null;
+    this.buttonConfigs = new Map();
+
+    // 初始化所有表
+    this.config.tables.forEach((tableName) => {
+      this.tables.set(tableName, {
+        table: null,
+        rows: [],
+        selectedRows: [],
+        selectedIndex: -1,
+        row: null,
+        childRow: null,
+        parentRow: null,
+        flag: false,
+        buttonConfigs: this.buildButtonConfigs(tableName),
+      });
+    });
+
+    // 初始化按钮配置
+    this.initButtonConfigs();
+
+    // 注册操作
+    this.initIconOptimization();
+    this.initAllTableListeners();
+    this.registerAllActions();
+  }
+
+  // ==================== 配置合并 ====================
+  mergeConfig(config) {
+    const defaultConfig = {
+      tables: [],
+      buttons: {
+        up: {
+          text: "升级",
+          icon: "default_up",
+          originId: "u_up",
+          tooltip: "升级节点",
+        },
+        down: {
+          text: "降级",
+          icon: "default_down",
+          originId: "u_down",
+          tooltip: "降级节点",
+        },
+        rise: {
+          text: "上移",
+          icon: "default_rise",
+          originId: "u_rise",
+          tooltip: "上移节点",
+        },
+        decline: {
+          text: "下移",
+          icon: "default_decline",
+          originId: "u_decline",
+          tooltip: "下移节点",
+        },
+      },
+      customIcons: {},
+      buttonMapping: {},
+    };
+
+    return {
+      ...defaultConfig,
+      ...config,
+      buttons: {
+        ...defaultConfig.buttons,
+        ...(config.buttons || {}),
+      },
+      customIcons: {
+        ...defaultConfig.customIcons,
+        ...(config.customIcons || {}),
+      },
+      buttonMapping: {
+        ...defaultConfig.buttonMapping,
+        ...(config.buttonMapping || {}),
+      },
+    };
+  }
+
+  // ==================== 默认图标库 ====================
+  getDefaultIcons() {
+    return {
+      default_up: `<svg t="1783322176013" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2271" width="1em" height="1em" fill="currentColor"><path d="M266.666667 821.333333v-469.333333h106.666666l-149.333333-149.333333-149.333333 149.333333h106.666666v469.333333m256-597.333333v85.333333h512v-85.333333h-512z m0 597.333333h512v-85.333333h-512v85.333333z m0-256h512v-85.333333h-512v85.333333z" fill="#1296db" p-id="2272"></path></svg>`,
+      default_down: `<svg t="1783322243206" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2502" width="1em" height="1em" fill="currentColor"><path d="M181.333333 202.666667v469.333333h-106.666666l149.333333 149.333333 149.333333-149.333333h-106.666666v-469.333333m170.666666 0v85.333333h512v-85.333333h-512z m0 597.333333h512v-85.333333h-512v85.333333z m0-256h512v-85.333333h-512v85.333333z" fill="#1296db" p-id="2503"></path></svg>`,
+      default_rise: `<svg t="1783322291972" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2733" width="1em" height="1em" fill="currentColor"><path d="M912 373.8L756.1 198.7c-12.1-9.4-22.6-13.5-35.2-13.5-13.6 0-25.8 4.7-34.4 13.3L528 373c-5.4 9.2-10.6 19.2-10.6 32.5 0 23.7 20.7 44.3 44.3 44.3 11.9 0 25.1-6 35-16l80.1-87.6v448.1c0 26.9 17.4 44.3 44.3 44.3 26.4 0 45-18.3 45-44.3v-448l80.3 87.8c11 11 20.4 15.8 31.4 15.8 26.2 0 47.6-19.9 47.6-44.3-0.1-12.1-4.7-23.1-13.4-31.8zM396.7 465.2H145.4c-25.8 0-46.8 21-46.8 46.8 0 25.9 20.9 46.8 46.8 46.8h251.3c25.8 0 46.7-21 46.7-46.8 0.1-25.9-20.9-46.8-46.7-46.8zM396.7 700.2H145.4c-25.8 0-46.8 21-46.8 46.8 0 25.9 20.9 46.8 46.8 46.8h251.3c25.8 0 46.7-21 46.7-46.8 0.1-25.8-20.9-46.8-46.7-46.8z" fill="#1296db" p-id="2734"></path></svg>`,
+      default_decline: `<svg t="1783322321245" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2952" width="1em" height="1em" fill="currentColor"><path d="M912 650.2c8.7-8.7 13.3-19.6 13.3-31.8 0-24.4-21.4-44.3-47.6-44.3-11 0-20.4 4.8-31.4 15.8L766 677.6v-448c0-26.1-18.5-44.3-45-44.3-26.8 0-44.3 17.4-44.3 44.3v448.1l-80.1-87.6c-9.9-9.9-23.1-16-35-16-23.6 0-44.3 20.7-44.3 44.3 0 13.3 5.2 23.3 10.6 32.5l158.5 174.5c8.6 8.6 20.8 13.3 34.4 13.3 12.5 0 23.1-4 35.2-13.5l156-175zM396.7 558.8c25.8 0 46.7-20.9 46.7-46.8 0-25.8-20.9-46.8-46.7-46.8H145.4c-25.8 0-46.8 20.9-46.8 46.8 0 25.8 20.9 46.8 46.8 46.8h251.3zM396.7 323.8c25.8 0 46.7-21 46.7-46.8 0-25.8-20.9-46.8-46.7-46.8H145.4c-25.8 0-46.8 20.9-46.8 46.8 0 25.8 20.9 46.8 46.8 46.8h251.3z" fill="#1296db" p-id="2953"></path></svg>`,
+    };
+  }
+
+  // ==================== 构建按钮配置 ====================
+  buildButtonConfigs(tableName) {
+    const defaultIcons = this.getDefaultIcons();
+    const buttonConfigs = {
+      up: { ...this.config.buttons.up },
+      down: { ...this.config.buttons.down },
+      rise: { ...this.config.buttons.rise },
+      decline: { ...this.config.buttons.decline },
+    };
+
+    const customIcons = this.config.customIcons;
+    Object.keys(buttonConfigs).forEach((key) => {
+      const config = buttonConfigs[key];
+      if (customIcons[key]) {
+        config.iconSvg = customIcons[key];
+      } else if (config.icon && defaultIcons[config.icon]) {
+        config.iconSvg = defaultIcons[config.icon];
+      } else {
+        config.iconSvg = defaultIcons[`default_${key}`];
+      }
+
+      if (
+        this.config.buttonMapping[tableName] &&
+        this.config.buttonMapping[tableName][key]
+      ) {
+        config.originId = this.config.buttonMapping[tableName][key];
+      }
+    });
+
+    return buttonConfigs;
+  }
+
+  // ==================== 初始化按钮配置 ====================
+  initButtonConfigs() {
+    this.config.tables.forEach((tableName) => {
+      const context = this.getTableContext(tableName);
+      context.buttonConfigs = this.buildButtonConfigs(tableName);
+    });
+  }
+
+  // ==================== 图标优化 ====================
+  initIconOptimization() {
+    const self = this;
+
+    const replaceToolbarIcons = (toolbarId, tableName) => {
+      const toolbar = document.getElementById(toolbarId);
+      if (!toolbar) {
+        console.error(`找不到工具栏 #${toolbarId}`);
+        return false;
+      }
+
+      const context = self.getTableContext(tableName);
+      const buttonConfigs = context.buttonConfigs;
+      let replacedCount = 0;
+
+      const actions = ["up", "down", "rise", "decline"];
+      actions.forEach((action) => {
+        const config = buttonConfigs[action];
+        if (!config) return;
+
+        const originId = config.originId;
+        const iconSvg = config.iconSvg;
+        if (!originId || !iconSvg) return;
+
+        const button = toolbar.querySelector(`[originid="${originId}"]`);
+        if (!button) {
+          console.warn(`未找到 originid="${originId}" 的按钮`);
+          return;
+        }
+
+        const svgElement = button.querySelector("svg");
+        if (!svgElement) return;
+
+        try {
+          const parser = new DOMParser();
+          const newSvgDoc = parser.parseFromString(iconSvg, "text/html");
+          const newSvg = newSvgDoc.querySelector("svg");
+
+          if (newSvg) {
+            newSvg.style.display = "inline-block";
+            newSvg.style.verticalAlign = "middle";
+            newSvg.style.lineHeight = "1";
+            svgElement.parentNode.replaceChild(newSvg, svgElement);
+            replacedCount++;
+
+            if (config.tooltip) {
+              button.title = config.tooltip;
+            }
+
+            const textNode = button.childNodes[0];
+            if (textNode && textNode.nodeType === 3 && config.text) {
+              textNode.textContent = config.text;
+            }
+          }
+        } catch (error) {
+          console.error(`替换 originid="${originId}" 时出错:`, error);
+        }
+      });
+
+      return replacedCount > 0;
+    };
+
+    const executeAlignmentFix = () => {
+      self.config.tables.forEach((tableName) => {
+        const toolbarId = `toolbar_${tableName}`;
+        if (document.getElementById(toolbarId)) {
+          replaceToolbarIcons(toolbarId, tableName);
+        }
+      });
+    };
+
+    if (document.readyState === "complete") {
+      executeAlignmentFix();
+    } else {
+      window.addEventListener("load", () => {
+        setTimeout(executeAlignmentFix, 300);
+      });
+    }
+
+    window.fixToolbarIcons = executeAlignmentFix;
+  }
+
+  // ==================== 树结构验证 ====================
+  convertSymbols(node) {
+    if (!node || typeof node !== "object") return;
+    if (typeof Symbol !== "undefined" && Object.getOwnPropertySymbols) {
+      const symbols = Object.getOwnPropertySymbols(node);
+      symbols.forEach((sym) => {
+        const desc =
+          sym.description || sym.toString().replace(/^Symbol\(|\)$/g, "");
+        const newKey = desc.replace(/^__/, "");
+        if (!(newKey in node)) {
+          node[newKey] = node[sym];
+        }
+      });
+    }
+    if (node.children && Array.isArray(node.children)) {
+      node.children.forEach((child) => this.convertSymbols(child));
+    }
+  }
+
+  isValidTreeStructure(tempRows) {
+    if (!Array.isArray(tempRows) || tempRows.length === 0) {
+      console.log("失败：不是数组或为空");
+      return false;
+    }
+
+    tempRows.forEach((row) => this.convertSymbols(row));
+
+    const nodeMap = new Map();
+    tempRows.forEach((node, index) => {
+      if (node && node.s_tree_id) {
+        nodeMap.set(node.s_tree_id, { node, index });
+      }
+    });
+
+    const rootNode = tempRows[0];
+    if (!rootNode || !rootNode.s_tree_id) {
+      console.log("失败：根节点无效");
+      return false;
+    }
+
+    const requiredProps = [
+      "s_tree_id",
+      "s_tree_pid",
+      "s_tree_no",
+      "treeLevel",
+      "treeIndex",
+      "checked",
+    ];
+    for (let i = 0; i < tempRows.length; i++) {
+      const node = tempRows[i];
+      if (!node) return false;
+      for (const prop of requiredProps) {
+        if (!(prop in node)) {
+          console.log(`失败：tempRows[${i}] 缺少属性 ${prop}`);
+          return false;
+        }
+      }
+    }
+
+    for (let i = 0; i < tempRows.length; i++) {
+      const node = tempRows[i];
+      if (!("children" in node)) {
+        node.children = [];
+      }
+      if (!Array.isArray(node.children)) return false;
+
+      for (
+        let childIndex = 0;
+        childIndex < node.children.length;
+        childIndex++
+      ) {
+        const child = node.children[childIndex];
+        if (!child || typeof child !== "object") return false;
+        if (!child.s_tree_id) return false;
+        if (child.treeIndex !== childIndex) {
+          console.log(`失败：子节点 ${child.s_tree_id} 的 treeIndex 不正确`);
+          return false;
+        }
+        if (
+          !child.treeParent ||
+          child.treeParent.s_tree_id !== node.s_tree_id
+        ) {
+          console.log(`失败：子节点 ${child.s_tree_id} 的 treeParent 不正确`);
+          return false;
+        }
+      }
+    }
+
+    const visited = new Set();
+    const traverse = (node) => {
+      if (!node || visited.has(node.s_tree_id)) return;
+      visited.add(node.s_tree_id);
+      if (node.children && Array.isArray(node.children)) {
+        for (const child of node.children) {
+          if (child && typeof child === "object" && child.s_tree_id) {
+            if (nodeMap.has(child.s_tree_id)) {
+              traverse(child);
+            }
+          }
+        }
+      }
+    };
+    traverse(rootNode);
+
+    for (const node of tempRows) {
+      if (!visited.has(node.s_tree_id)) {
+        console.log(`失败：节点 ${node.s_tree_id} 无法从根节点访问到`);
+        return false;
+      }
+    }
+
+    console.log("✅ 验证通过！这是一个有效的树结构");
+    return true;
+  }
+
+  // ==================== 树标准化 ====================
+  normalizeTree(data) {
+    if (!Array.isArray(data) || data.length === 0) return [];
+
+    data.forEach((node) => this.convertSymbols(node));
+
+    const rootNodes = [];
+    for (let i = 0; i < data.length; i++) {
+      if (data[i].s_tree_pid == 0 || data[i].s_tree_pid == null) {
+        rootNodes.push(data[i]);
+      }
+    }
+
+    const fixNode = (node, parent, level, index) => {
+      if (!node) return;
+
+      node.treeLevel = level;
+      node.treeIndex = index;
+      node.treeParent = parent || undefined;
+
+      const children = node.children || [];
+      node.treeLeafNode = children.length === 0;
+
+      for (let i = 0; i < children.length; i++) {
+        fixNode(children[i], node, level + 1, i);
+        children[i].treeLastChild = i === children.length - 1;
+      }
+    };
+
+    for (let i = 0; i < rootNodes.length; i++) {
+      fixNode(rootNodes[i], null, rootNodes[i].treeLevel || 0, i);
+      rootNodes[i].treeLastChild = i === rootNodes.length - 1;
+      delete rootNodes[i].treeParent;
+    }
+
+    return rootNodes;
+  }
+
+  // ==================== 获取表上下文 ====================
+  getTableContext(tableName) {
+    if (!this.tables.has(tableName)) {
+      this.tables.set(tableName, {
+        table: null,
+        rows: [],
+        selectedRows: [],
+        selectedIndex: -1,
+        row: null,
+        childRow: null,
+        parentRow: null,
+        flag: false,
+        buttonConfigs: this.buildButtonConfigs(tableName),
+      });
+    }
+    return this.tables.get(tableName);
+  }
+
+  updateTableContext(tableName) {
+    const context = this.getTableContext(tableName);
+    const table = this.$NG.getCmpApi(tableName);
+    context.table = table;
+    context.selectedIndex = table._lastHighlightRowIndex || 0;
+    context.rows = table.getSelectedData();
+    context.selectedRows = context.rows;
+    context.row = context.rows[0] || null;
+
+    if (context.row) {
+      this.convertSymbols(context.row);
+      context.childRow =
+        context.row.s_tree_pid != 0
+          ? context.row.children
+          : context.row.treeLastChild;
+      context.parentRow =
+        context.row.s_tree_pid != 0
+          ? context.row.treeParent
+          : context.row.treeParent;
+    }
+
+    return context;
+  }
+
+  // ==================== 初始化所有表监听 ====================
+  initAllTableListeners() {
+    const self = this;
+    this.config.tables.forEach((tableName) => {
+      this.$NG.getCmpApi(tableName).subscribe(({ args, table }) => {
+        const context = self.getTableContext(tableName);
+        context.table = table;
+        context.selectedIndex = table._lastHighlightRowIndex || 0;
+        context.rows = table.getSelectedData();
+        context.row = context.rows[0] || null;
+
+        if (context.row) {
+          self.convertSymbols(context.row);
+          context.childRow =
+            context.row.s_tree_pid != 0
+              ? context.row.children
+              : context.row.treeLastChild;
+          context.parentRow =
+            context.row.s_tree_pid != 0
+              ? context.row.treeParent
+              : context.row.treeParent;
+        }
+
+        self.currentTable = tableName;
+      }, "onCheckedChange");
+    });
+  }
+
+  // ==================== 注册所有操作 ====================
+  registerAllActions() {
+    const self = this;
+    this.config.tables.forEach((tableName) => {
+      this.registerAction(tableName);
+    });
+  }
+
+  registerAction(tableName) {
+    const self = this;
+    const context = this.getTableContext(tableName);
+    const buttonConfigs = context.buttonConfigs;
+
+    // 升级
+    this.useClick(async function ({ args }) {
+      const context = self.updateTableContext(tableName);
+      const { table, rows, row, parentRow } = context;
+
+      if (rows.length === 0) {
+        self.$NG.message(buttonConfigs.up.tooltip || "请确认已选中分枝");
+        return;
+      }
+
+      if (row && (row.s_tree_pid == 0 || row.s_tree_pid == null)) {
+        self.$NG.message("当前已是根节点");
+        return;
+      }
+
+      if (!self.isValidTreeStructure(rows)) {
+        self.$NG.message("请确认选中单分枝");
+        return;
+      }
+
+      const selectedIndex = table.getSelectedIndexes()[0] || 0;
+      const rowCopy = self.cloneNode(row);
+
+      if (
+        parentRow &&
+        (parentRow.s_tree_pid == 0 || parentRow.s_tree_pid == null)
+      ) {
+        rowCopy.s_tree_pid = 0;
+        table.deleteCheckedRows();
+
+        const data = table.getRows();
+        data.push(rowCopy);
+        const normalizedData = self.normalizeTree(data);
+        self.applyTableData(table, normalizedData);
+      } else if (
+        parentRow &&
+        parentRow.s_tree_pid != 0 &&
+        parentRow.s_tree_pid != null
+      ) {
+        rowCopy.s_tree_pid = parentRow.s_tree_pid;
+        table.deleteCheckedRows();
+
+        const data = table.getRows();
+        const targetParent = self.findNodeById(data, parentRow.s_tree_pid);
+
+        if (targetParent) {
+          if (!targetParent.children) {
+            targetParent.children = [];
+          }
+          targetParent.children.push(rowCopy);
+          const normalizedData = self.normalizeTree(data);
+          self.applyTableData(table, normalizedData);
+        }
+      } else {
+        self.$NG.message("升级失败");
+      }
+    }, `${tableName}.${buttonConfigs.up.originId}`);
+
+    // 降级
+    this.useClick(async function ({ args }) {
+      const context = self.updateTableContext(tableName);
+      const { table, rows, row } = context;
+
+      if (rows.length === 0) {
+        self.$NG.message(buttonConfigs.down.tooltip || "请确认已选中分枝");
+        return;
+      }
+
+      if (!self.isValidTreeStructure(rows)) {
+        self.$NG.message("请确认选中单分枝");
+        return;
+      }
+
+      if (row.treeIndex == 0) {
+        self.$NG.message("降级失败，上方无可挂接的节点。");
+        return;
+      }
+
+      const selectedIndex = table.getSelectedIndexes()[0] || 0;
+      const data = table.getRows();
+      const selectedRow = data[selectedIndex];
+
+      if (!selectedRow) {
+        self.$NG.message("未找到选中的行");
+        return;
+      }
+
+      const targetParentNode = data[selectedIndex - 1];
+      if (!targetParentNode) {
+        self.$NG.message("降级失败，上方无可挂接的节点。");
+        return;
+      }
+
+      if (!targetParentNode.children) {
+        targetParentNode.children = [];
+      }
+
+      if (row && (row.s_tree_pid == 0 || row.s_tree_pid == null)) {
+        const rowCopy = self.cloneNode(row);
+        rowCopy.s_tree_pid = targetParentNode.s_tree_id;
+        targetParentNode.children.push(rowCopy);
+        data.splice(selectedIndex, 1);
+        data.push(rowCopy);
+
+        const normalizedData = self.normalizeTree(data);
+        self.applyTableData(table, normalizedData);
+        targetParentNode.isExpanded = true;
+      } else if (row && row.s_tree_pid != 0 && row.s_tree_pid != null) {
+        selectedRow.s_tree_pid = targetParentNode.s_tree_id;
+        targetParentNode.children.push(selectedRow);
+        table.deleteCheckedRows();
+
+        const newData = table.getRows();
+        const normalizedData = self.normalizeTree(newData);
+        self.applyTableData(table, normalizedData);
+        targetParentNode.isExpanded = true;
+      }
+    }, `${tableName}.${buttonConfigs.down.originId}`);
+
+    // 上移
+    this.useClick(async function ({ args }) {
+      const context = self.updateTableContext(tableName);
+      const { table, rows, row } = context;
+
+      if (rows.length === 0) {
+        self.$NG.message(buttonConfigs.rise.tooltip || "请确认已选中分枝");
+        return;
+      }
+
+      if (!self.isValidTreeStructure(rows)) {
+        self.$NG.message("请确认选中单分枝");
+        return;
+      }
+
+      const selectedIndex = table.getSelectedIndexes()[0] || 0;
+      const data = table.getRows();
+      const selectedRow = data[selectedIndex];
+
+      if (!selectedRow) {
+        self.$NG.message("未找到选中的行");
+        return;
+      }
+
+      if (selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) {
+        const rootIndex = data.findIndex(
+          (d) => d.s_tree_id === selectedRow.s_tree_id,
+        );
+        let prevRootIndex = -1;
+        for (let i = rootIndex - 1; i >= 0; i--) {
+          if (data[i].s_tree_pid == 0 || data[i].s_tree_pid == null) {
+            prevRootIndex = i;
+            break;
+          }
+        }
+
+        if (prevRootIndex === -1) {
+          self.$NG.message("上移失败，已是第一个根节点");
+          return;
+        }
+
+        [data[rootIndex], data[prevRootIndex]] = [
+          data[prevRootIndex],
+          data[rootIndex],
+        ];
+        table.clearSelected();
+      } else {
+        const parentNode = selectedRow.treeParent;
+        if (
+          !parentNode ||
+          !parentNode.children ||
+          parentNode.children.length === 0
+        ) {
+          self.$NG.message("上移失败，未找到同级节点");
+          return;
+        }
+
+        const currentIndex = selectedRow.treeIndex;
+        if (currentIndex === 0 || currentIndex == null) {
+          self.$NG.message("上移失败，已是该层级第一个节点");
+          return;
+        }
+
+        const siblings = parentNode.children;
+        [siblings[currentIndex - 1], siblings[currentIndex]] = [
+          siblings[currentIndex],
+          siblings[currentIndex - 1],
+        ];
+      }
+
+      const normalizedData = self.normalizeTree(data);
+      self.applyTableData(table, normalizedData);
+
+      if (
+        !(selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) &&
+        selectedRow.treeParent
+      ) {
+        selectedRow.treeParent.isExpanded = true;
+      }
+    }, `${tableName}.${buttonConfigs.rise.originId}`);
+
+    // 下移
+    this.useClick(async function ({ args }) {
+      const context = self.updateTableContext(tableName);
+      const { table, rows, row } = context;
+
+      if (rows.length === 0) {
+        self.$NG.message(buttonConfigs.decline.tooltip || "请确认已选中分枝");
+        return;
+      }
+
+      if (!self.isValidTreeStructure(rows)) {
+        self.$NG.message("请确认选中单分枝");
+        return;
+      }
+
+      const selectedIndex = table.getSelectedIndexes()[0] || 0;
+      const data = table.getRows();
+      const selectedRow = data[selectedIndex];
+
+      if (!selectedRow) {
+        self.$NG.message("未找到选中的行");
+        return;
+      }
+
+      if (selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) {
+        const rootIndex = data.findIndex(
+          (d) => d.s_tree_id === selectedRow.s_tree_id,
+        );
+        let nextRootIndex = -1;
+        for (let i = rootIndex + 1; i < data.length; i++) {
+          if (data[i].s_tree_pid == 0 || data[i].s_tree_pid == null) {
+            nextRootIndex = i;
+            break;
+          }
+        }
+
+        if (nextRootIndex === -1) {
+          self.$NG.message("下移失败，已是最后一个根节点");
+          return;
+        }
+
+        [data[rootIndex], data[nextRootIndex]] = [
+          data[nextRootIndex],
+          data[rootIndex],
+        ];
+        table.clearSelected();
+      } else {
+        const parentNode = selectedRow.treeParent;
+        if (
+          !parentNode ||
+          !parentNode.children ||
+          parentNode.children.length === 0
+        ) {
+          self.$NG.message("下移失败，未找到同级节点");
+          return;
+        }
+
+        const currentIndex = selectedRow.treeIndex;
+        if (
+          currentIndex >= parentNode.children.length - 1 ||
+          currentIndex == null
+        ) {
+          self.$NG.message("下移失败，已是该层级最后一个节点");
+          return;
+        }
+
+        const siblings = parentNode.children;
+        [siblings[currentIndex + 1], siblings[currentIndex]] = [
+          siblings[currentIndex],
+          siblings[currentIndex + 1],
+        ];
+      }
+
+      const normalizedData = self.normalizeTree(data);
+      self.applyTableData(table, normalizedData);
+
+      if (
+        !(selectedRow.s_tree_pid == 0 || selectedRow.s_tree_pid == null) &&
+        selectedRow.treeParent
+      ) {
+        selectedRow.treeParent.isExpanded = true;
+      }
+    }, `${tableName}.${buttonConfigs.decline.originId}`);
+  }
+
+  // ==================== 工具方法 ====================
+  cloneNode(node) {
+    if (!node) return null;
+
+    const clone = {
+      s_tree_id: node.s_tree_id,
+      s_tree_pid: node.s_tree_pid,
+      s_tree_no: node.s_tree_no,
+      phid: node.phid,
+      checked: node.checked,
+      treeLevel: node.treeLevel,
+      treeLastChild: node.treeLastChild,
+      treeLeafNode: node.treeLeafNode,
+      isExpanded: node.isExpanded,
+      rel_key1: node.rel_key1,
+    };
+
+    if (node.children && Array.isArray(node.children)) {
+      clone.children = node.children.map((child) => this.cloneNode(child));
+    }
+
+    return clone;
+  }
+
+  findNodeById(data, targetId) {
+    for (const node of data) {
+      const found = this.findNodeInTree(node, targetId);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  findNodeInTree(node, targetId) {
+    if (node.s_tree_id === targetId) {
+      return node;
+    }
+    if (node.children && node.children.length > 0) {
+      for (const child of node.children) {
+        const found = this.findNodeInTree(child, targetId);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  applyTableData(table, data) {
+    table.clearSelected();
+    table.clearRows();
+    table.addRows(data);
+    table.refreshView();
+  }
+
+  // ==================== 手动刷新 ====================
+  refresh(tableName) {
+    if (tableName) {
+      this.updateTableContext(tableName);
+      const toolbarId = `toolbar_${tableName}`;
+      if (document.getElementById(toolbarId)) {
+        this.initIconOptimization();
+      }
+    } else {
+      this.config.tables.forEach((name) => {
+        this.updateTableContext(name);
+      });
+      this.initIconOptimization();
+    }
+  }
+
+  // ==================== 动态更新按钮配置 ====================
+  updateButtonConfig(tableName, action, config) {
+    const context = this.getTableContext(tableName);
+    if (context.buttonConfigs[action]) {
+      Object.assign(context.buttonConfigs[action], config);
+      this.refresh(tableName);
+    }
+  }
+
+  // ==================== 销毁 ====================
+  destroy() {
+    this.tables.clear();
+    this.currentTable = null;
+  }
+}
+
+// // ==================== 使用示例 ====================
+
+// // 1. 基本使用（使用默认配置）
+// const treeManager = new TreeTableManager([
+//   "inv_mate_test_d1",
+//   "inv_mate_test_d2"
+// ]);
+
+// // 2. 自定义按钮名称和图标
+// const customManager = new TreeTableManager({
+//   tables: ["inv_mate_test_d1", "inv_mate_test_d2"],
+//   buttons: {
+//     up: {
+//       text: '⬆ 升级',
+//       icon: 'default_up',
+//       originId: 'u_up',
+//       tooltip: '将当前节点升级为根节点'
+//     },
+//     down: {
+//       text: '⬇ 降级',
+//       icon: 'default_down',
+//       originId: 'u_down',
+//       tooltip: '将当前节点降级为子节点'
+//     },
+//     rise: {
+//       text: '▲ 上移',
+//       icon: 'default_rise',
+//       originId: 'u_rise',
+//       tooltip: '将当前节点向上移动'
+//     },
+//     decline: {
+//       text: '▼ 下移',
+//       icon: 'default_decline',
+//       originId: 'u_decline',
+//       tooltip: '将当前节点向下移动'
+//     }
+//   }
+// });
+
+// // 3. 使用自定义SVG图标
+// const customIconManager = new TreeTableManager({
+//   tables: ["inv_mate_test_d1"],
+//   customIcons: {
+//     up: `<svg>...自定义升级图标...</svg>`,
+//     down: `<svg>...自定义降级图标...</svg>`,
+//     rise: `<svg>...自定义上移图标...</svg>`,
+//     decline: `<svg>...自定义下移图标...</svg>`
+//   }
+// });
+
+// // 4. 自定义按钮ID映射（当按钮的originid与默认不同时）
+// const mappingManager = new TreeTableManager({
+//   tables: ["inv_mate_test_d1"],
+//   buttonMapping: {
+//     "inv_mate_test_d1": {
+//       up: 'custom_up_btn',
+//       down: 'custom_down_btn',
+//       rise: 'custom_rise_btn',
+//       decline: 'custom_decline_btn'
+//     }
+//   }
+// });
+
+// // 5. 混合配置
+// const mixedManager = new TreeTableManager({
+//   tables: ["inv_mate_test_d1", "inv_mate_test_d2"],
+//   buttons: {
+//     up: { text: '升级节点', icon: 'default_up' },
+//     down: { text: '降级节点', icon: 'default_down' }
+//   },
+//   customIcons: {
+//     up: `<svg>...自定义升级图标...</svg>`
+//   },
+//   buttonMapping: {
+//     "inv_mate_test_d1": {
+//       up: 'custom_up_btn'
+//     }
+//   }
+// });
+
+// // 6. 动态更新按钮配置
+// treeManager.updateButtonConfig('inv_mate_test_d1', 'up', {
+//   text: '🔼 升级',
+//   tooltip: '点击升级当前节点'
+// });
+
+// // 7. 手动刷新
+// treeManager.refresh('inv_mate_test_d1');
+
+// // 暴露到全局
+// window.treeManager = treeManager;
+
+if (typeof window !== "undefined") {
+  window.TreeTableManager = TreeTableManager;
+}
