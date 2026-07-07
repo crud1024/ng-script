@@ -4,7 +4,7 @@ class TreeTableManager {
     // 注入外部依赖
     this.deps = deps || {};
     this.$NG = this.deps.$NG || window.$NG;
-    this.tableInstances = new Map();
+    this._eventHandlers = new Map();
 
     // 支持多种配置方式
     if (typeof config === "string") {
@@ -16,7 +16,6 @@ class TreeTableManager {
     this.config = this.mergeConfig(config);
     this.tables = new Map();
     this.currentTable = null;
-    this.buttonConfigs = new Map();
 
     // 初始化所有表
     this.config.tables.forEach((tableName) => {
@@ -29,17 +28,29 @@ class TreeTableManager {
         childRow: null,
         parentRow: null,
         flag: false,
-        buttonConfigs: this.buildButtonConfigs(tableName),
+        buttonConfigs: null, // 稍后初始化
       });
     });
 
     // 初始化按钮配置
     this.initButtonConfigs();
 
-    // 注册操作（使用原生事件监听）
+    // 等待 DOM 加载完成后初始化
+    if (document.readyState === "complete") {
+      this.init();
+    } else {
+      window.addEventListener("load", () => {
+        setTimeout(() => this.init(), 100);
+      });
+    }
+  }
+
+  // ==================== 初始化 ====================
+  init() {
     this.initIconOptimization();
     this.initAllTableListeners();
     this.bindToolbarEvents();
+    console.log("✅ TreeTableManager 初始化完成，表:", this.config.tables);
   }
 
   // ==================== 配置合并 ====================
@@ -156,39 +167,51 @@ class TreeTableManager {
       const toolbarId = `toolbar_${tableName}`;
       const toolbar = document.getElementById(toolbarId);
       if (!toolbar) {
-        console.warn(`工具栏 #${toolbarId} 未找到，跳过事件绑定`);
+        console.warn(`⚠️ 工具栏 #${toolbarId} 未找到，跳过事件绑定`);
         return;
       }
 
       const context = this.getTableContext(tableName);
+      // 确保 buttonConfigs 已初始化
+      if (!context.buttonConfigs) {
+        context.buttonConfigs = this.buildButtonConfigs(tableName);
+      }
       const buttonConfigs = context.buttonConfigs;
+
+      console.log(`🔧 开始绑定工具栏事件: ${tableName}`);
 
       // 为每个按钮绑定事件
       const actions = ["up", "down", "rise", "decline"];
       actions.forEach((action) => {
         const config = buttonConfigs[action];
-        if (!config) return;
+        if (!config) {
+          console.warn(`⚠️ 未找到配置: ${action}`);
+          return;
+        }
 
         const originId = config.originId;
         const button = toolbar.querySelector(`[originid="${originId}"]`);
         if (!button) {
-          console.warn(`按钮 originid="${originId}" 未找到，跳过事件绑定`);
+          console.warn(`⚠️ 按钮 originid="${originId}" 未找到，跳过事件绑定`);
           return;
         }
 
         // 移除之前绑定的事件（避免重复绑定）
-        button.removeEventListener("click", self._eventHandlers.get(button));
+        const oldHandler = self._eventHandlers.get(button);
+        if (oldHandler) {
+          button.removeEventListener("click", oldHandler);
+          self._eventHandlers.delete(button);
+        }
 
         // 创建事件处理函数
         const handler = function (e) {
           e.preventDefault();
+          e.stopPropagation();
+          console.log(`🖱️ 点击按钮: ${tableName}.${originId} -> ${action}`);
           self.handleAction(tableName, action);
         };
 
         // 保存引用以便后续移除
-        if (!self._eventHandlers) {
-          self._eventHandlers = new Map();
-        }
         self._eventHandlers.set(button, handler);
 
         button.addEventListener("click", handler);
@@ -204,6 +227,11 @@ class TreeTableManager {
     const { table, rows, row, parentRow } = context;
     const buttonConfigs = context.buttonConfigs;
     const config = buttonConfigs[action];
+
+    if (!config) {
+      this.$NG.message("未知操作");
+      return;
+    }
 
     // 通用验证
     if (rows.length === 0) {
@@ -486,6 +514,10 @@ class TreeTableManager {
       }
 
       const context = self.getTableContext(tableName);
+      // 确保 buttonConfigs 已初始化
+      if (!context.buttonConfigs) {
+        context.buttonConfigs = self.buildButtonConfigs(tableName);
+      }
       const buttonConfigs = context.buttonConfigs;
       let replacedCount = 0;
 
@@ -545,15 +577,7 @@ class TreeTableManager {
       });
     };
 
-    if (document.readyState === "complete") {
-      executeAlignmentFix();
-    } else {
-      window.addEventListener("load", () => {
-        setTimeout(executeAlignmentFix, 300);
-      });
-    }
-
-    window.fixToolbarIcons = executeAlignmentFix;
+    executeAlignmentFix();
   }
 
   // ==================== 树结构验证 ====================
@@ -721,7 +745,7 @@ class TreeTableManager {
         childRow: null,
         parentRow: null,
         flag: false,
-        buttonConfigs: this.buildButtonConfigs(tableName),
+        buttonConfigs: null,
       });
     }
     return this.tables.get(tableName);
@@ -729,23 +753,27 @@ class TreeTableManager {
 
   updateTableContext(tableName) {
     const context = this.getTableContext(tableName);
-    const table = this.$NG.getCmpApi(tableName);
-    context.table = table;
-    context.selectedIndex = table._lastHighlightRowIndex || 0;
-    context.rows = table.getSelectedData();
-    context.selectedRows = context.rows;
-    context.row = context.rows[0] || null;
+    try {
+      const table = this.$NG.getCmpApi(tableName);
+      context.table = table;
+      context.selectedIndex = table._lastHighlightRowIndex || 0;
+      context.rows = table.getSelectedData();
+      context.selectedRows = context.rows;
+      context.row = context.rows[0] || null;
 
-    if (context.row) {
-      this.convertSymbols(context.row);
-      context.childRow =
-        context.row.s_tree_pid != 0
-          ? context.row.children
-          : context.row.treeLastChild;
-      context.parentRow =
-        context.row.s_tree_pid != 0
-          ? context.row.treeParent
-          : context.row.treeParent;
+      if (context.row) {
+        this.convertSymbols(context.row);
+        context.childRow =
+          context.row.s_tree_pid != 0
+            ? context.row.children
+            : context.row.treeLastChild;
+        context.parentRow =
+          context.row.s_tree_pid != 0
+            ? context.row.treeParent
+            : context.row.treeParent;
+      }
+    } catch (error) {
+      console.warn(`更新表上下文失败: ${tableName}`, error);
     }
 
     return context;
@@ -755,27 +783,31 @@ class TreeTableManager {
   initAllTableListeners() {
     const self = this;
     this.config.tables.forEach((tableName) => {
-      this.$NG.getCmpApi(tableName).subscribe(({ args, table }) => {
-        const context = self.getTableContext(tableName);
-        context.table = table;
-        context.selectedIndex = table._lastHighlightRowIndex || 0;
-        context.rows = table.getSelectedData();
-        context.row = context.rows[0] || null;
+      try {
+        this.$NG.getCmpApi(tableName).subscribe(({ args, table }) => {
+          const context = self.getTableContext(tableName);
+          context.table = table;
+          context.selectedIndex = table._lastHighlightRowIndex || 0;
+          context.rows = table.getSelectedData();
+          context.row = context.rows[0] || null;
 
-        if (context.row) {
-          self.convertSymbols(context.row);
-          context.childRow =
-            context.row.s_tree_pid != 0
-              ? context.row.children
-              : context.row.treeLastChild;
-          context.parentRow =
-            context.row.s_tree_pid != 0
-              ? context.row.treeParent
-              : context.row.treeParent;
-        }
+          if (context.row) {
+            self.convertSymbols(context.row);
+            context.childRow =
+              context.row.s_tree_pid != 0
+                ? context.row.children
+                : context.row.treeLastChild;
+            context.parentRow =
+              context.row.s_tree_pid != 0
+                ? context.row.treeParent
+                : context.row.treeParent;
+          }
 
-        self.currentTable = tableName;
-      }, "onCheckedChange");
+          self.currentTable = tableName;
+        }, "onCheckedChange");
+      } catch (error) {
+        console.warn(`初始化表监听失败: ${tableName}`, error);
+      }
     });
   }
 
@@ -852,7 +884,7 @@ class TreeTableManager {
   // ==================== 动态更新按钮配置 ====================
   updateButtonConfig(tableName, action, config) {
     const context = this.getTableContext(tableName);
-    if (context.buttonConfigs[action]) {
+    if (context.buttonConfigs && context.buttonConfigs[action]) {
       Object.assign(context.buttonConfigs[action], config);
       this.refresh(tableName);
     }
