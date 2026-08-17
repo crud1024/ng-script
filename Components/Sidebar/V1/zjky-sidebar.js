@@ -1,21 +1,19 @@
-// ==================== 表单侧边栏类 ====================
-
 var DEFAULTS = {
   content: null,
-  contentHtml: '',
-  contentText: '',
-  title: '侧边栏',
+  contentHtml: "",
+  contentText: "",
+  title: "侧边栏",
   panel: null,
   retry: true,
   maxRetries: 30,
   retryDelay: 300,
-  onCreated: null
+  onCreated: null,
 };
 
 var instanceCounter = 0;
 
 function toElement(value) {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     try {
       return document.querySelector(value);
     } catch (error) {
@@ -29,7 +27,7 @@ function toElement(value) {
 }
 
 function styleText(styles) {
-  return styles.join(';') + ';';
+  return styles.join(";") + ";";
 }
 
 function getBaseId(target) {
@@ -37,14 +35,17 @@ function getBaseId(target) {
     return target.id;
   }
   instanceCounter += 1;
-  return 'sidebar-target-' + Date.now().toString(36) + '-' + instanceCounter;
+  return "sidebar-target-" + Date.now().toString(36) + "-" + instanceCounter;
 }
 
 function getIdSet(baseId) {
   return {
-    wrapper: 'wrapper-' + baseId,
-    content: 'wrapper-' + baseId + '-content',
-    sidebar: baseId === 'zjky_wbs_standard_m' ? 'resizable-container' : baseId + '-sidebar'
+    wrapper: "wrapper-" + baseId,
+    content: "wrapper-" + baseId + "-content",
+    sidebar:
+      baseId === "zjky_wbs_standard_m"
+        ? "resizable-container"
+        : baseId + "-sidebar",
   };
 }
 
@@ -76,7 +77,7 @@ function resolvePanel(target, options) {
   }
 
   if (target && target.id) {
-    panel = document.getElementById(target.id + '_fs_ctx');
+    panel = document.getElementById(target.id + "_fs_ctx");
     if (panel) {
       return panel;
     }
@@ -120,7 +121,7 @@ class FormSidebar {
     this._destroyed = false;
 
     instanceCounter += 1;
-    this._key = 'sidebar-' + Date.now().toString(36) + '-' + instanceCounter;
+    this._key = "sidebar-" + Date.now().toString(36) + "-" + instanceCounter;
 
     this._start();
   }
@@ -176,7 +177,7 @@ class FormSidebar {
       wrapper: this._wrapper,
       sidebar: this._sidebar,
       content: this._content,
-      sidebarContent: this._sidebarContent
+      sidebarContent: this._sidebarContent,
     };
   }
 
@@ -192,13 +193,13 @@ class FormSidebar {
     }
 
     if (!this._options.retry) {
-      console.error('未找到目标元素：' + this._targetInput);
+      console.error("未找到目标元素：" + this._targetInput);
       return;
     }
 
     this._retryCount += 1;
     if (this._retryCount > this._options.maxRetries) {
-      console.error('未找到目标元素：' + this._targetInput);
+      console.error("未找到目标元素：" + this._targetInput);
       return;
     }
 
@@ -222,46 +223,46 @@ class FormSidebar {
     var wrapper = document.getElementById(ids.wrapper);
 
     if (!wrapper) {
-      wrapper = document.createElement('div');
+      wrapper = document.createElement("div");
       wrapper.id = ids.wrapper;
-      wrapper.setAttribute('data-sidebar-wrapper', '1');
-      wrapper.setAttribute('data-sidebar-key', this._key);
+      wrapper.setAttribute("data-sidebar-wrapper", "1");
+      wrapper.setAttribute("data-sidebar-key", this._key);
       parent.appendChild(wrapper);
     }
 
     var content = document.getElementById(ids.content);
     if (!content) {
-      content = document.createElement('div');
+      content = document.createElement("div");
       content.id = ids.content;
-      content.setAttribute('data-sidebar-content', '1');
+      content.setAttribute("data-sidebar-content", "1");
       wrapper.appendChild(content);
     }
 
     wrapper.style.cssText = styleText([
-      'display:flex',
-      'flex-direction:row',
-      'align-items:stretch',
-      'width:100%',
-      'height:auto',
-      'min-height:100%',
-      'flex:1 1 auto',
-      'gap:10px',
-      'position:relative',
-      'box-sizing:border-box',
-      'overflow:hidden'
+      "display:flex",
+      "flex-direction:row",
+      "align-items:stretch",
+      "width:100%",
+      "height:auto",
+      "min-height:100%",
+      "flex:1 1 auto",
+      "gap:10px",
+      "position:relative",
+      "box-sizing:border-box",
+      "overflow:hidden",
     ]);
 
     content.style.cssText = styleText([
-      'display:flex',
-      'flex-direction:column',
-      'align-items:stretch',
-      'flex:1 1 0%',
-      'min-width:0',
-      'min-height:0',
-      'height:auto',
-      'gap:var(--outer-margin, 16px)',
-      'overflow:auto',
-      'box-sizing:border-box'
+      "display:flex",
+      "flex-direction:column",
+      "align-items:stretch",
+      "flex:1 1 0%",
+      "min-width:0",
+      "min-height:0",
+      "height:auto",
+      "gap:var(--outer-margin, 16px)",
+      "overflow:auto",
+      "box-sizing:border-box",
     ]);
 
     var originalChildren = Array.prototype.slice.call(parent.children);
@@ -274,45 +275,45 @@ class FormSidebar {
     this._panel = resolvePanel(target, this._options);
     this._movePanelChildrenOut(content, target, this._panel);
 
-    parent.style.minHeight = '100%';
-    parent.style.boxSizing = 'border-box';
+    parent.style.minHeight = "100%";
+    parent.style.boxSizing = "border-box";
 
-    target.style.display = 'flex';
-    target.style.flexDirection = 'column';
-    target.style.flex = '0 0 auto';
-    target.style.minWidth = '0';
-    target.style.height = 'auto';
-    target.style.minHeight = '0';
-    target.style.overflow = 'visible';
-    target.style.boxSizing = 'border-box';
+    target.style.display = "flex";
+    target.style.flexDirection = "column";
+    target.style.flex = "0 0 auto";
+    target.style.minWidth = "0";
+    target.style.height = "auto";
+    target.style.minHeight = "0";
+    target.style.overflow = "visible";
+    target.style.boxSizing = "border-box";
 
     var sidebar = document.getElementById(ids.sidebar);
     if (!sidebar) {
-      sidebar = document.createElement('div');
+      sidebar = document.createElement("div");
       sidebar.id = ids.sidebar;
-      sidebar.setAttribute('data-sidebar', '1');
+      sidebar.setAttribute("data-sidebar", "1");
       wrapper.insertBefore(sidebar, content);
     }
 
     sidebar.style.cssText = styleText([
-      'width:20%',
-      'min-width:160px',
-      'max-width:320px',
-      'height:auto',
-      'min-height:100%',
-      'align-self:stretch',
-      'flex-shrink:0',
-      'background:#ffffff',
-      'border:1px solid rgba(0,0,0,0.08)',
-      'border-radius:2px',
-      'padding:12px',
-      'box-sizing:border-box',
-      'overflow:auto',
-      'display:flex',
-      'flex-direction:column',
-      'gap:8px',
-      'position:relative',
-      'z-index:1'
+      "width:20%",
+      "min-width:160px",
+      "max-width:320px",
+      "height:auto",
+      "min-height:100%",
+      "align-self:stretch",
+      "flex-shrink:0",
+      "background:#ffffff",
+      "border:1px solid rgba(0,0,0,0.08)",
+      "border-radius:2px",
+      "padding:12px",
+      "box-sizing:border-box",
+      "overflow:auto",
+      "display:flex",
+      "flex-direction:column",
+      "gap:8px",
+      "position:relative",
+      "z-index:1",
     ]);
 
     this._wrapper = wrapper;
@@ -321,7 +322,7 @@ class FormSidebar {
 
     this._buildSidebarContent();
 
-    this._addListener(window, 'resize', () => {
+    this._addListener(window, "resize", () => {
       if (!this._destroyed) {
         this._syncHeights();
       }
@@ -335,11 +336,11 @@ class FormSidebar {
       this._syncHeights();
     });
 
-    if (typeof this._options.onCreated === 'function') {
+    if (typeof this._options.onCreated === "function") {
       this._options.onCreated(this);
     }
 
-    console.log('侧边栏已创建，目标节点：' + (target.id || target.tagName));
+    console.log("侧边栏已创建，目标节点：" + (target.id || target.tagName));
     return true;
   }
 
@@ -359,8 +360,10 @@ class FormSidebar {
     }
 
     if (target && target.id) {
-      var panel = document.getElementById(target.id + '_fs_ctx');
-      var panelWrapper = document.getElementById('wrapper-' + target.id + '_fs_ctx');
+      var panel = document.getElementById(target.id + "_fs_ctx");
+      var panelWrapper = document.getElementById(
+        "wrapper-" + target.id + "_fs_ctx",
+      );
       if (panelWrapper && panelWrapper.parentElement) {
         if (panel && panelWrapper.contains(panel)) {
           panelWrapper.replaceWith(panel);
@@ -382,12 +385,17 @@ class FormSidebar {
     var children = Array.prototype.slice.call(wrapper.children);
 
     children.forEach(function (child) {
-      if (child.getAttribute && child.getAttribute('data-sidebar-content') === '1') {
+      if (
+        child.getAttribute &&
+        child.getAttribute("data-sidebar-content") === "1"
+      ) {
         content = child;
       }
     });
 
-    var restored = content ? Array.prototype.slice.call(content.children) : children;
+    var restored = content
+      ? Array.prototype.slice.call(content.children)
+      : children;
     wrapper.remove();
 
     restored.forEach(function (child) {
@@ -400,9 +408,12 @@ class FormSidebar {
       return;
     }
 
-    var childrenToMove = Array.prototype.filter.call(target.children, function (child) {
-      return child !== panel;
-    });
+    var childrenToMove = Array.prototype.filter.call(
+      target.children,
+      function (child) {
+        return child !== panel;
+      },
+    );
     if (!childrenToMove.length) {
       return;
     }
@@ -411,7 +422,7 @@ class FormSidebar {
       child.remove();
     });
 
-    var marker = document.createComment('moved-panel-children');
+    var marker = document.createComment("moved-panel-children");
     content.insertBefore(marker, target.nextSibling || null);
     childrenToMove.forEach(function (child) {
       content.insertBefore(child, marker);
@@ -434,15 +445,15 @@ class FormSidebar {
       return;
     }
 
-    var height = available + 'px';
+    var height = available + "px";
     wrapper.style.height = height;
-    wrapper.style.minHeight = '0';
-    wrapper.style.overflow = 'hidden';
+    wrapper.style.minHeight = "0";
+    wrapper.style.overflow = "hidden";
     sidebar.style.height = height;
-    sidebar.style.minHeight = '0';
+    sidebar.style.minHeight = "0";
     content.style.height = height;
     content.style.maxHeight = height;
-    content.style.overflow = 'auto';
+    content.style.overflow = "auto";
   }
 
   _addListener(element, type, listener) {
@@ -456,60 +467,60 @@ class FormSidebar {
     var sidebar = this._sidebar;
     var options = this._options;
 
-    sidebar.dataset.sidebarInited = '1';
-    sidebar.innerHTML = '';
+    sidebar.dataset.sidebarInited = "1";
+    sidebar.innerHTML = "";
 
-    var header = document.createElement('div');
+    var header = document.createElement("div");
     header.style.cssText = styleText([
-      'display:flex',
-      'align-items:center',
-      'padding-bottom:10px',
-      'border-bottom:1px solid rgba(0,0,0,0.08)',
-      'gap:8px',
-      'flex-shrink:0',
-      'min-height:32px'
+      "display:flex",
+      "align-items:center",
+      "padding-bottom:10px",
+      "border-bottom:1px solid rgba(0,0,0,0.08)",
+      "gap:8px",
+      "flex-shrink:0",
+      "min-height:32px",
     ]);
     sidebar.appendChild(header);
 
-    var colorBar = document.createElement('div');
+    var colorBar = document.createElement("div");
     colorBar.style.cssText = styleText([
-      'width:4px',
-      'height:14px',
-      'border-radius:0 3px 3px 0',
-      'background:#3877FC',
-      'flex-shrink:0'
+      "width:4px",
+      "height:14px",
+      "border-radius:0 3px 3px 0",
+      "background:#3877FC",
+      "flex-shrink:0",
     ]);
     header.appendChild(colorBar);
 
-    var title = document.createElement('span');
+    var title = document.createElement("span");
     title.style.cssText = styleText([
-      'font-size:14px',
-      'font-weight:600',
-      'color:#333',
-      'cursor:default'
+      "font-size:14px",
+      "font-weight:600",
+      "color:#333",
+      "cursor:default",
     ]);
     title.textContent = options.title;
     header.appendChild(title);
 
-    var spacer = document.createElement('span');
-    spacer.style.cssText = 'flex:1;';
+    var spacer = document.createElement("span");
+    spacer.style.cssText = "flex:1;";
     header.appendChild(spacer);
 
-    var sidebarContent = document.createElement('div');
+    var sidebarContent = document.createElement("div");
     sidebarContent.style.cssText = styleText([
-      'flex:1 1 0%',
-      'overflow:auto',
-      'padding:4px 0',
-      'font-size:13px',
-      'color:#666',
-      'line-height:1.6',
-      'min-height:100px',
-      'box-sizing:border-box'
+      "flex:1 1 0%",
+      "overflow:auto",
+      "padding:4px 0",
+      "font-size:13px",
+      "color:#666",
+      "line-height:1.6",
+      "min-height:100px",
+      "box-sizing:border-box",
     ]);
-    sidebarContent.setAttribute('data-sidebar-content-body', '1');
+    sidebarContent.setAttribute("data-sidebar-content-body", "1");
     sidebar.appendChild(sidebarContent);
 
-    sidebarContent.textContent = '';
+    sidebarContent.textContent = "";
     if (options.contentHtml) {
       sidebarContent.innerHTML = options.contentHtml;
     } else if (options.contentText) {
@@ -522,82 +533,86 @@ class FormSidebar {
     }
     this._sidebarContent = sidebarContent;
 
-    var resizeHandle = document.createElement('div');
+    var resizeHandle = document.createElement("div");
     resizeHandle.style.cssText = styleText([
-      'position:absolute',
-      'right:-5px',
-      'top:0',
-      'width:10px',
-      'height:100%',
-      'cursor:col-resize',
-      'background:transparent',
-      'z-index:10',
-      'display:flex',
-      'align-items:center',
-      'justify-content:center'
+      "position:absolute",
+      "right:-5px",
+      "top:0",
+      "width:10px",
+      "height:100%",
+      "cursor:col-resize",
+      "background:transparent",
+      "z-index:10",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
     ]);
 
-    var dragLine = document.createElement('div');
+    var dragLine = document.createElement("div");
     dragLine.style.cssText = styleText([
-      'width:2px',
-      'height:40px',
-      'background:rgba(0,0,0,0.15)',
-      'border-radius:1px',
-      'transition:all 0.2s',
-      'pointer-events:none'
+      "width:2px",
+      "height:40px",
+      "background:rgba(0,0,0,0.15)",
+      "border-radius:1px",
+      "transition:all 0.2s",
+      "pointer-events:none",
     ]);
     resizeHandle.appendChild(dragLine);
     sidebar.appendChild(resizeHandle);
 
     var isDragging = false;
 
-    this._addListener(resizeHandle, 'mouseenter', function () {
+    this._addListener(resizeHandle, "mouseenter", function () {
       if (!isDragging) {
-        dragLine.style.background = '#3877FC';
-        dragLine.style.height = '60px';
+        dragLine.style.background = "#3877FC";
+        dragLine.style.height = "60px";
       }
     });
 
-    this._addListener(resizeHandle, 'mouseleave', function () {
+    this._addListener(resizeHandle, "mouseleave", function () {
       if (!isDragging) {
-        dragLine.style.background = 'rgba(0,0,0,0.15)';
-        dragLine.style.height = '40px';
+        dragLine.style.background = "rgba(0,0,0,0.15)";
+        dragLine.style.height = "40px";
       }
     });
 
-    this._addListener(resizeHandle, 'mousedown', function (event) {
+    this._addListener(resizeHandle, "mousedown", function (event) {
       isDragging = true;
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-      dragLine.style.background = '#3877FC';
-      dragLine.style.height = '80px';
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      dragLine.style.background = "#3877FC";
+      dragLine.style.height = "80px";
       event.preventDefault();
     });
 
-    this._addListener(document, 'mousemove', function (event) {
-      if (!isDragging) {
-        return;
-      }
-      if (!this._wrapper) {
-        return;
-      }
-      var rect = this._wrapper.getBoundingClientRect();
-      var percent = ((event.clientX - rect.left) / rect.width) * 100;
-      var newWidth = Math.min(80, Math.max(5, percent));
-      sidebar.style.width = newWidth + '%';
-      sidebar.style.minWidth = '160px';
-      sidebar.style.maxWidth = '80%';
-    }.bind(this));
+    this._addListener(
+      document,
+      "mousemove",
+      function (event) {
+        if (!isDragging) {
+          return;
+        }
+        if (!this._wrapper) {
+          return;
+        }
+        var rect = this._wrapper.getBoundingClientRect();
+        var percent = ((event.clientX - rect.left) / rect.width) * 100;
+        var newWidth = Math.min(80, Math.max(5, percent));
+        sidebar.style.width = newWidth + "%";
+        sidebar.style.minWidth = "160px";
+        sidebar.style.maxWidth = "80%";
+      }.bind(this),
+    );
 
-    this._addListener(document, 'mouseup', function () {
+    this._addListener(document, "mouseup", function () {
       if (!isDragging) {
         return;
       }
       isDragging = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      dragLine.style.background = 'rgba(0,0,0,0.15)';
-      dragLine.style.height = '40px';
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      dragLine.style.background = "rgba(0,0,0,0.15)";
+      dragLine.style.height = "40px";
     });
   }
 
@@ -609,10 +624,12 @@ class FormSidebar {
 
     var rect = sidebar.getBoundingClientRect();
     var style = window.getComputedStyle(sidebar);
-    var visible = rect.width > 80 && rect.height > 80 &&
-      style.display !== 'none' &&
-      style.visibility !== 'hidden' &&
-      style.opacity !== '0';
+    var visible =
+      rect.width > 80 &&
+      rect.height > 80 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      style.opacity !== "0";
 
     if (visible) {
       return;
@@ -622,19 +639,19 @@ class FormSidebar {
       document.body.appendChild(sidebar);
     }
 
-    sidebar.style.position = 'fixed';
-    sidebar.style.top = '64px';
-    sidebar.style.right = '16px';
-    sidebar.style.bottom = '16px';
-    sidebar.style.left = 'auto';
-    sidebar.style.width = '220px';
-    sidebar.style.minWidth = '220px';
-    sidebar.style.maxWidth = '320px';
-    sidebar.style.height = 'auto';
-    sidebar.style.minHeight = '0';
-    sidebar.style.zIndex = '2147483647';
-    sidebar.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
-    console.log('侧边栏已启用浮动兜底：', rect.width, rect.height);
+    sidebar.style.position = "fixed";
+    sidebar.style.top = "64px";
+    sidebar.style.right = "16px";
+    sidebar.style.bottom = "16px";
+    sidebar.style.left = "auto";
+    sidebar.style.width = "220px";
+    sidebar.style.minWidth = "220px";
+    sidebar.style.maxWidth = "320px";
+    sidebar.style.height = "auto";
+    sidebar.style.minHeight = "0";
+    sidebar.style.zIndex = "2147483647";
+    sidebar.style.boxShadow = "0 8px 24px rgba(0,0,0,0.12)";
+    console.log("侧边栏已启用浮动兜底：", rect.width, rect.height);
   }
 }
 
