@@ -143,7 +143,7 @@ class ScriptLoader {
         () => {
           loaded++;
           this._triggerProgress(loaded, total, url);
-          //   console.log(`✅ [${loaded}/${total}] 加载成功:`, url);
+          console.log(`[${loaded}/${total}] 加载成功:`, url);
 
           if (loaded === total) {
             this._triggerComplete(resolve, errors);
