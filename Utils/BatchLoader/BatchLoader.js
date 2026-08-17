@@ -143,7 +143,7 @@ class ScriptLoader {
         () => {
           loaded++;
           this._triggerProgress(loaded, total, url);
-          console.log(`✅ [${loaded}/${total}] 加载成功:`, url);
+          //   console.log(`✅ [${loaded}/${total}] 加载成功:`, url);
 
           if (loaded === total) {
             this._triggerComplete(resolve, errors);
@@ -180,9 +180,9 @@ class ScriptLoader {
    */
   _triggerComplete(resolve, errors) {
     if (errors.length > 0) {
-      console.warn(`⚠️ 加载完成，但有 ${errors.length} 个脚本失败`);
+      console.warn(`加载完成，但有 ${errors.length} 个失败`);
     } else {
-      console.log("🎉 所有脚本加载成功！");
+      console.log("Batch加载成功！");
     }
 
     if (this.options.onComplete) {
